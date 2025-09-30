@@ -35,7 +35,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/talents", get(get_talents));
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 3000));
-    tracing::info!("🚀 Server listening on http://{}", addr);
+    tracing::info!("Server listening on http://{}", addr);
     
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, app).await?;
@@ -47,25 +47,45 @@ async fn main() -> anyhow::Result<()> {
 struct TalentQuery {
     class: String,
     spec: String,
-}
-
-async fn home() -> Html<String> {
-    let config = ClassSpecs::load();
-    Html(templates::home(&config))
+    encounter: i32,
 }
 
 async fn get_talents(Query(params): Query<TalentQuery>) -> Html<String> {
-    tracing::info!("Fetching talents for {} {}", params.class, params.spec);
+    tracing::info!(
+        "Fetching talents for {} {} on encounter {}",
+        params.class,
+        params.spec,
+        params.encounter
+    );
     
-    match warcraftlogs::fetch_top_talents(&params.class, &params.spec).await {
+    match warcraftlogs::fetch_top_talents(&params.class, &params.spec, params.encounter).await {
         Ok(data) => Html(templates::render_talents(&data)),
         Err(e) => {
-            tracing::error!("Failed to fetch talents: {}", e);
+            tracing::error!("Failed to fetch talents: {:#}", e);
             Html(format!(r#"<p style="color: #e06c75;">Error: {}</p>"#, e))
         }
     }
 }
 
+
+//
+async fn home() -> Html<String> {
+    let config = ClassSpecs::load();
+    Html(templates::home(&config))
+}
+
+// async fn get_talents(Query(params): Query<TalentQuery>) -> Html<String> {
+//     tracing::info!("Fetching talents for {} {}", params.class, params.spec);
+//
+//     match warcraftlogs::fetch_top_talents(&params.class, &params.spec).await {
+//         Ok(data) => Html(templates::render_talents(&data)),
+//         Err(e) => {
+//             tracing::error!("Failed to fetch talents: {}", e);
+//             Html(format!(r#"<p style="color: #e06c75;">Error: {}</p>"#, e))
+//         }
+//     }
+// }
+//
 
 // use axum::{
 //     extract::Query,

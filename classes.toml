@@ -1,0 +1,38 @@
+[Death_Knight]
+specs = ["Blood", "Frost", "Unholy"]
+
+[Demon_Hunter]
+specs = ["Havoc", "Vengeance"]
+
+[Druid]
+specs = ["Balance", "Feral", "Guardian", "Restoration"]
+
+[Evoker]
+specs = ["Augmentation", "Devastation", "Preservation"]
+
+[Hunter]
+specs = ["Beast Mastery", "Marksmanship", "Survival"]
+
+[Mage]
+specs = ["Arcane", "Fire", "Frost"]
+
+[Monk]
+specs = ["Brewmaster", "Mistweaver", "Windwalker"]
+
+[Paladin]
+specs = ["Holy", "Protection", "Retribution"]
+
+[Priest]
+specs = ["Discipline", "Holy", "Shadow"]
+
+[Rogue]
+specs = ["Assassination", "Outlaw", "Subtlety"]
+
+[Shaman]
+specs = ["Elemental", "Enhancement", "Restoration"]
+
+[Warlock]
+specs = ["Affliction", "Demonology", "Destruction"]
+
+[Warrior]
+specs = ["Arms", "Fury", "Protection"]

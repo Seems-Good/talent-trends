@@ -53,17 +53,32 @@ struct TalentQuery {
     class: String,
     spec: String,
     encounter: i32,
+    region: String,
 }
 
 async fn get_talents(Query(params): Query<TalentQuery>) -> Html<String> {
+    let region_display = if params.region == "all" {
+        "All Regions"
+    } else {
+        &params.region
+    };
+
     tracing::info!(
-        "Fetching talents for {} {} on encounter {}",
+        "Fetching talents for {} {} on encounter {} in {} region.",
         params.class,
         params.spec,
-        params.encounter
+        params.encounter,
+        region_display
     );
+
+    let region = if params.region == "all" {
+        None
+    } else {
+        Some(params.region.as_str())
+    };
     
-    match warcraftlogs::fetch_top_talents(&params.class, &params.spec, params.encounter).await {
+
+    match warcraftlogs::fetch_top_talents(&params.class, &params.spec, params.encounter, region).await {
         Ok(data) => Html(templates::render_talents(&data)),
         Err(e) => {
             tracing::error!("Failed to fetch talents: {:#}", e);

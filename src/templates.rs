@@ -18,6 +18,14 @@ pub fn home(config: &ClassSpecs) -> String {
         })
         .collect::<Vec<_>>()
         .join("\n                ");
+
+    let region_options: String = crate::config::get_regions()
+        .iter()
+        .map(|reg| {
+            format!(r#"<option value="{}">{}</option>"#, reg.code, reg.name)
+        })
+        .collect::<Vec<_>>()
+        .join("\n                ");
     
     // Build JS object mapping classes to specs
     let specs_map: String = config.classes
@@ -141,9 +149,11 @@ pub fn home(config: &ClassSpecs) -> String {
 </head>
 <body>
     <h1>⚔️ WarcraftLogs Talent Trends</h1>
-    
     <div class="form-container">
         <form id="talent-form">
+            <select name="region" id="region" required>
+                {}
+            </select>
             <select name="encounter" id="encounter" required>
                 <option value="">Select Boss</option>
                 {}
@@ -157,21 +167,23 @@ pub fn home(config: &ClassSpecs) -> String {
             </select>
             <button type="submit" id="submit-btn" disabled>Get Talents</button>
         </form>
-    </div>
-    
+    </div> 
+        
     <div id="results"></div>
     
     <script>
         const specsData = {{
             {}
         }};
-        
+       
+        const regionSelect = document.getElementById('region')
         const encounterSelect = document.getElementById('encounter');
         const classSelect = document.getElementById('class');
         const specSelect = document.getElementById('spec');
         const submitBtn = document.getElementById('submit-btn');
         const resultsDiv = document.getElementById('results');
-        
+       
+        regionSelect.addEventListener('change', updateSubmitButton);
         encounterSelect.addEventListener('change', updateSubmitButton);
         
         classSelect.addEventListener('change', (e) => {{
@@ -195,7 +207,7 @@ pub fn home(config: &ClassSpecs) -> String {
         specSelect.addEventListener('change', updateSubmitButton);
         
         function updateSubmitButton() {{
-            const allSelected = encounterSelect.value && classSelect.value && specSelect.value;
+            const allSelected = regionSelect.value && encounterSelect.value && classSelect.value && specSelect.value;
             submitBtn.disabled = !allSelected;
         }}
         
@@ -220,7 +232,7 @@ pub fn home(config: &ClassSpecs) -> String {
     </script>
 </body>
 </html>
-"#, encounter_options, class_options, specs_map)
+"#, region_options, encounter_options, class_options, specs_map)
 }
 
 pub fn render_talents(data: &[TalentData]) -> String {

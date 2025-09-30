@@ -22,7 +22,7 @@ async fn main() -> anyhow::Result<()> {
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::fmt::layer()
-                .with_target(false)
+                .with_target(true)
                 .compact()
         )
         .init();
@@ -35,7 +35,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/talents", get(get_talents_sse));
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 3000));
-    tracing::info!("🚀 Server listening on http://{}", addr);
+    tracing::info!("Server listening on http://{}", addr);
     
     let listener = tokio::net::TcpListener::bind(addr).await?;
     axum::serve(listener, app).await?;

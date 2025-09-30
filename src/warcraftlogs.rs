@@ -65,7 +65,7 @@ async fn get_access_token() -> Result<String> {
     let token_resp: TokenResponse = response.json().await
         .context("Failed to parse OAuth token response")?;
     
-    tracing::info!("✓ OAuth token acquired");
+    tracing::info!("OAuth token acquired");
     
     {
         let mut cache = TOKEN_CACHE.write().await;
@@ -310,7 +310,7 @@ async fn fetch_and_stream_talents(
             "[Missing report data]".to_string()
         };
         
-        tracing::info!("✓ Rank {}: {}", rank_number, name);
+        tracing::info!("Rank {}: {}", rank_number, name);
         
         let talent_data = TalentDataWithRank {
             rank: rank_number,

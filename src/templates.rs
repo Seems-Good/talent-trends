@@ -57,7 +57,7 @@ pub fn home(config: &ClassSpecs) -> String {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Talent Trends - WarcraftLogs</title>
+    <title>Talent Trends</title>
     <style>
         * {{
             box-sizing: border-box;
@@ -181,10 +181,23 @@ pub fn home(config: &ClassSpecs) -> String {
             border-left: 4px solid #e06c75;
             margin: 16px 0;
         }}
+        .spinner {{
+            margin: 40px auto;
+            width: 48px;
+            height: 48px;
+            border: 5px solid #444;
+            border-top-color: #c69b6d;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }}
+
+        @keyframes spin {{
+            to {{ transform: rotate(360deg); }}
+        }}
     </style>
 </head>
 <body>
-    <h1>⚔️ WarcraftLogs Talent Trends</h1>
+    <h1>Talent Trends</h1>
     
     <div class="form-container">
         <form id="talent-form">
@@ -199,7 +212,7 @@ pub fn home(config: &ClassSpecs) -> String {
                 <option value="">Select Class</option>
                 {}
             </select>
-            <select name="spec" id="spec" required disabled>
+            <select name="spec" id="spec" required>
                 <option value="">Select Spec</option>
             </select>
             <button type="submit" id="submit-btn" disabled>Get Talents</button>
@@ -253,7 +266,7 @@ pub fn home(config: &ClassSpecs) -> String {
             const formData = new FormData(e.target);
             const params = new URLSearchParams(formData);
             
-            resultsDiv.innerHTML = '<h2>Top 10 Talents</h2><div class="loading">Loading talent strings...</div>';
+            resultsDiv.innerHTML = '<h2>Top 10 Talents</h2><div id="talents-container"></div><div id="loading-spinner" class="spinner"></div>';
             submitBtn.disabled = true;
             
             const eventSource = new EventSource(`/api/talents?${{params}}`);
@@ -263,6 +276,8 @@ pub fn home(config: &ClassSpecs) -> String {
                 if (firstData) {{
                     resultsDiv.innerHTML = '<h2>Top 10 Talents</h2><div id="talents-container"></div>';
                     firstData = false;
+                    const spinner = document.getElementById('loading-spinner');
+                    if (spinner) spinner.remove();
                 }}
                 const container = document.getElementById('talents-container');
                 container.insertAdjacentHTML('beforeend', event.data);

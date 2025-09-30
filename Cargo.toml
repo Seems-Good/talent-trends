@@ -16,3 +16,6 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 toml = "0.8" 
 lazy_static = "1.5.0"
 dotenvy = "0.15.7"
+async-stream = "0.3"
+tokio-stream = "0.1"
+futures = "0.3"

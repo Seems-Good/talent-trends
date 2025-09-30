@@ -1,5 +1,16 @@
 use crate::config::ClassSpecs;
-use crate::warcraftlogs::TalentData;
+use crate::warcraftlogs::TalentDataWithRank;
+
+pub fn render_talent_entry(data: &TalentDataWithRank) -> String {
+    format!(
+        r#"<div class="talent-entry">
+            <h3>#{} - {}</h3>
+            <div class="talent-string">{}</div>
+            <a href="{}" target="_blank" rel="noopener">View Log →</a>
+        </div>"#,
+        data.rank, data.data.name, data.data.talent_string, data.data.log_url
+    )
+}
 
 pub fn home(config: &ClassSpecs) -> String {
     let class_options: String = config.classes
@@ -18,7 +29,7 @@ pub fn home(config: &ClassSpecs) -> String {
         })
         .collect::<Vec<_>>()
         .join("\n                ");
-
+    
     let region_options: String = crate::config::get_regions()
         .iter()
         .map(|reg| {
@@ -27,7 +38,6 @@ pub fn home(config: &ClassSpecs) -> String {
         .collect::<Vec<_>>()
         .join("\n                ");
     
-    // Build JS object mapping classes to specs
     let specs_map: String = config.classes
         .iter()
         .map(|(class_name, class_data)| {
@@ -47,8 +57,11 @@ pub fn home(config: &ClassSpecs) -> String {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Talent Trends</title>
+    <title>Talent Trends - WarcraftLogs</title>
     <style>
+        * {{
+            box-sizing: border-box;
+        }}
         body {{ 
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             max-width: 900px; 
@@ -65,6 +78,7 @@ pub fn home(config: &ClassSpecs) -> String {
         h2 {{
             color: #c69b6d;
             margin-top: 32px;
+            margin-bottom: 16px;
         }}
         .form-container {{
             background: #2a2a2a;
@@ -103,29 +117,49 @@ pub fn home(config: &ClassSpecs) -> String {
             color: #888;
             cursor: not-allowed;
         }}
+        #talents-container {{
+            /* Container for smooth additions */
+        }}
         .talent-entry {{ 
             border: 1px solid #444;
             padding: 16px;
             margin: 12px 0;
             border-radius: 6px;
             background: #2a2a2a;
+            animation: slideIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+            transform-origin: top;
+            will-change: transform, opacity;
+        }}
+        @keyframes slideIn {{
+            from {{ 
+                opacity: 0; 
+                transform: translateY(-20px) scale(0.95);
+            }}
+            to {{ 
+                opacity: 1; 
+                transform: translateY(0) scale(1);
+            }}
         }}
         .talent-entry h3 {{
             margin-top: 0;
+            margin-bottom: 8px;
             color: #c69b6d;
+            font-size: 18px;
         }}
         .talent-string {{ 
             font-family: 'Courier New', monospace;
             background: #1a1a1a;
-            padding: 8px;
+            padding: 10px;
             border-radius: 4px;
             overflow-x: auto;
             font-size: 12px;
             margin: 12px 0;
+            word-break: break-all;
         }}
         .talent-entry a {{
             color: #6db3c6;
             text-decoration: none;
+            font-weight: 500;
         }}
         .talent-entry a:hover {{
             text-decoration: underline;
@@ -137,6 +171,7 @@ pub fn home(config: &ClassSpecs) -> String {
             text-align: center;
             padding: 40px;
             color: #888;
+            font-style: italic;
         }}
         .error {{
             color: #e06c75;
@@ -144,11 +179,13 @@ pub fn home(config: &ClassSpecs) -> String {
             padding: 16px;
             border-radius: 6px;
             border-left: 4px solid #e06c75;
+            margin: 16px 0;
         }}
     </style>
 </head>
 <body>
     <h1>⚔️ WarcraftLogs Talent Trends</h1>
+    
     <div class="form-container">
         <form id="talent-form">
             <select name="region" id="region" required>
@@ -167,22 +204,22 @@ pub fn home(config: &ClassSpecs) -> String {
             </select>
             <button type="submit" id="submit-btn" disabled>Get Talents</button>
         </form>
-    </div> 
-        
+    </div>
+    
     <div id="results"></div>
     
     <script>
         const specsData = {{
             {}
         }};
-       
-        const regionSelect = document.getElementById('region')
+        
+        const regionSelect = document.getElementById('region');
         const encounterSelect = document.getElementById('encounter');
         const classSelect = document.getElementById('class');
         const specSelect = document.getElementById('spec');
         const submitBtn = document.getElementById('submit-btn');
         const resultsDiv = document.getElementById('results');
-       
+        
         regionSelect.addEventListener('change', updateSubmitButton);
         encounterSelect.addEventListener('change', updateSubmitButton);
         
@@ -216,18 +253,34 @@ pub fn home(config: &ClassSpecs) -> String {
             const formData = new FormData(e.target);
             const params = new URLSearchParams(formData);
             
-            resultsDiv.innerHTML = '<div class="loading">Loading top talents...</div>';
+            resultsDiv.innerHTML = '<h2>Top 10 Talents</h2><div class="loading">Loading talent strings...</div>';
             submitBtn.disabled = true;
             
-            try {{
-                const response = await fetch(`/api/talents?${{params}}`);
-                const html = await response.text();
-                resultsDiv.innerHTML = html;
-            }} catch (err) {{
-                resultsDiv.innerHTML = `<div class="error">Error: ${{err.message}}</div>`;
-            }} finally {{
+            const eventSource = new EventSource(`/api/talents?${{params}}`);
+            let firstData = true;
+            
+            eventSource.onmessage = (event) => {{
+                if (firstData) {{
+                    resultsDiv.innerHTML = '<h2>Top 10 Talents</h2><div id="talents-container"></div>';
+                    firstData = false;
+                }}
+                const container = document.getElementById('talents-container');
+                container.insertAdjacentHTML('beforeend', event.data);
+            }};
+            
+            eventSource.addEventListener('complete', () => {{
+                eventSource.close();
                 updateSubmitButton();
-            }}
+            }});
+            
+            eventSource.onerror = (err) => {{
+                console.error('EventSource error:', err);
+                eventSource.close();
+                if (firstData) {{
+                    resultsDiv.innerHTML = '<div class="error">Connection error. Please try again.</div>';
+                }}
+                updateSubmitButton();
+            }};
         }});
     </script>
 </body>
@@ -235,33 +288,23 @@ pub fn home(config: &ClassSpecs) -> String {
 "#, region_options, encounter_options, class_options, specs_map)
 }
 
-pub fn render_talents(data: &[TalentData]) -> String {
-    if data.is_empty() {
-        return r#"<div class="loading">No talent data found.</div>"#.to_string();
-    }
-    
-    let entries: String = data
-        .iter()
-        .enumerate()
-        .map(|(i, t)| {
-            format!(
-                r#"<div class="talent-entry">
-                    <h3>#{} - {}</h3>
-                    <div class="talent-string">{}</div>
-                    <a href="{}" target="_blank" rel="noopener">View Log →</a>
-                </div>"#,
-                i + 1, t.name, t.talent_string, t.log_url
-            )
-        })
-        .collect();
-    
-    format!("<h2>Top 10 Talents</h2>{}", entries)
-}
 
 
 
 // use crate::config::ClassSpecs;
-// use crate::warcraftlogs::TalentData;
+// //use crate::warcraftlogs::TalentData;
+// use crate::warcraftlogs::TalentDataWithRank;
+//
+// pub fn render_talent_entry(data: &TalentDataWithRank) -> String {
+//     format!(
+//         r#"<div class="talent-entry">
+//             <h3>#{} - {}</h3>
+//             <div class="talent-string">{}</div>
+//             <a href="{}" target="_blank" rel="noopener">View Log →</a>
+//         </div>"#,
+//         data.rank, data.data.name, data.data.talent_string, data.data.log_url
+//     )
+// }
 //
 // pub fn home(config: &ClassSpecs) -> String {
 //     let class_options: String = config.classes
@@ -273,7 +316,22 @@ pub fn render_talents(data: &[TalentData]) -> String {
 //         .collect::<Vec<_>>()
 //         .join("\n                ");
 //
-//     // Build JS object mapping classes to specs
+//     let encounter_options: String = crate::config::get_encounters()
+//         .iter()
+//         .map(|enc| {
+//             format!(r#"<option value="{}">{}</option>"#, enc.id, enc.name)
+//         })
+//         .collect::<Vec<_>>()
+//         .join("\n                ");
+//
+//     let region_options: String = crate::config::get_regions()
+//         .iter()
+//         .map(|reg| {
+//             format!(r#"<option value="{}">{}</option>"#, reg.code, reg.name)
+//         })
+//         .collect::<Vec<_>>()
+//         .join("\n                ");
+//
 //     let specs_map: String = config.classes
 //         .iter()
 //         .map(|(class_name, class_data)| {
@@ -308,6 +366,10 @@ pub fn render_talents(data: &[TalentData]) -> String {
 //             border-bottom: 3px solid #c69b6d;
 //             padding-bottom: 12px;
 //         }}
+//         h2 {{
+//             color: #c69b6d;
+//             margin-top: 32px;
+//         }}
 //         .form-container {{
 //             background: #2a2a2a;
 //             padding: 24px;
@@ -323,6 +385,7 @@ pub fn render_talents(data: &[TalentData]) -> String {
 //             border: 1px solid #444;
 //             background: #333;
 //             color: #e0e0e0;
+//             min-width: 200px;
 //         }}
 //         select:focus, button:focus {{
 //             outline: 2px solid #c69b6d;
@@ -334,6 +397,7 @@ pub fn render_talents(data: &[TalentData]) -> String {
 //             font-weight: 600;
 //             cursor: pointer;
 //             border: none;
+//             min-width: auto;
 //         }}
 //         button:hover {{
 //             background: #d4a574;
@@ -349,6 +413,11 @@ pub fn render_talents(data: &[TalentData]) -> String {
 //             margin: 12px 0;
 //             border-radius: 6px;
 //             background: #2a2a2a;
+//             animation: fadeIn 0.3s ease-in;
+//         }}
+//         @keyframes fadeIn {{
+//             from {{ opacity: 0; transform: translateY(-10px); }}
+//             to {{ opacity: 1; transform: translateY(0); }}
 //         }}
 //         .talent-entry h3 {{
 //             margin-top: 0;
@@ -361,6 +430,7 @@ pub fn render_talents(data: &[TalentData]) -> String {
 //             border-radius: 4px;
 //             overflow-x: auto;
 //             font-size: 12px;
+//             margin: 12px 0;
 //         }}
 //         .talent-entry a {{
 //             color: #6db3c6;
@@ -377,6 +447,13 @@ pub fn render_talents(data: &[TalentData]) -> String {
 //             padding: 40px;
 //             color: #888;
 //         }}
+//         .error {{
+//             color: #e06c75;
+//             background: #2a1a1a;
+//             padding: 16px;
+//             border-radius: 6px;
+//             border-left: 4px solid #e06c75;
+//         }}
 //     </style>
 // </head>
 // <body>
@@ -384,6 +461,13 @@ pub fn render_talents(data: &[TalentData]) -> String {
 //
 //     <div class="form-container">
 //         <form id="talent-form">
+//             <select name="region" id="region" required>
+//                 {}
+//             </select>
+//             <select name="encounter" id="encounter" required>
+//                 <option value="">Select Boss</option>
+//                 {}
+//             </select>
 //             <select name="class" id="class" required>
 //                 <option value="">Select Class</option>
 //                 {}
@@ -402,10 +486,15 @@ pub fn render_talents(data: &[TalentData]) -> String {
 //             {}
 //         }};
 //
+//         const regionSelect = document.getElementById('region');
+//         const encounterSelect = document.getElementById('encounter');
 //         const classSelect = document.getElementById('class');
 //         const specSelect = document.getElementById('spec');
 //         const submitBtn = document.getElementById('submit-btn');
 //         const resultsDiv = document.getElementById('results');
+//
+//         regionSelect.addEventListener('change', updateSubmitButton);
+//         encounterSelect.addEventListener('change', updateSubmitButton);
 //
 //         classSelect.addEventListener('change', (e) => {{
 //             const selectedClass = e.target.value;
@@ -421,57 +510,53 @@ pub fn render_talents(data: &[TalentData]) -> String {
 //                 specSelect.disabled = false;
 //             }} else {{
 //                 specSelect.disabled = true;
-//                 submitBtn.disabled = true;
 //             }}
+//             updateSubmitButton();
 //         }});
 //
-//         specSelect.addEventListener('change', (e) => {{
-//             submitBtn.disabled = !e.target.value;
-//         }});
+//         specSelect.addEventListener('change', updateSubmitButton);
+//
+//         function updateSubmitButton() {{
+//             const allSelected = regionSelect.value && encounterSelect.value && classSelect.value && specSelect.value;
+//             submitBtn.disabled = !allSelected;
+//         }}
 //
 //         document.getElementById('talent-form').addEventListener('submit', async (e) => {{
 //             e.preventDefault();
 //             const formData = new FormData(e.target);
 //             const params = new URLSearchParams(formData);
 //
-//             resultsDiv.innerHTML = '<div class="loading">Loading top talents...</div>';
+//             resultsDiv.innerHTML = '<h2>Top 10 Talents</h2><div class="loading">Loading talent strings...</div>';
 //             submitBtn.disabled = true;
 //
-//             try {{
-//                 const response = await fetch(`/api/talents?${{params}}`);
-//                 const html = await response.text();
-//                 resultsDiv.innerHTML = html;
-//             }} catch (err) {{
-//                 resultsDiv.innerHTML = `<p style="color: #e06c75;">Error: ${{err.message}}</p>`;
-//             }} finally {{
-//                 submitBtn.disabled = false;
-//             }}
+//             const eventSource = new EventSource(`/api/talents?${{params}}`);
+//             let firstData = true;
+//
+//             eventSource.onmessage = (event) => {{
+//                 if (firstData) {{
+//                     resultsDiv.innerHTML = '<h2>Top 10 Talents</h2>';
+//                     firstData = false;
+//                 }}
+//                 resultsDiv.innerHTML += event.data;
+//             }};
+//
+//             eventSource.addEventListener('complete', () => {{
+//                 eventSource.close();
+//                 updateSubmitButton();
+//             }});
+//
+//             eventSource.onerror = (err) => {{
+//                 console.error('EventSource error:', err);
+//                 eventSource.close();
+//                 if (firstData) {{
+//                     resultsDiv.innerHTML = '<div class="error">Connection error. Please try again.</div>';
+//                 }}
+//                 updateSubmitButton();
+//             }};
 //         }});
 //     </script>
 // </body>
 // </html>
-// "#, class_options, specs_map)
+// "#, region_options, encounter_options, class_options, specs_map)
 // }
-//
-// pub fn render_talents(data: &[TalentData]) -> String {
-//     if data.is_empty() {
-//         return r#"<div class="loading">No talent data found.</div>"#.to_string();
-//     }
-//
-//     let entries: String = data
-//         .iter()
-//         .enumerate()
-//         .map(|(i, t)| {
-//             format!(
-//                 r#"<div class="talent-entry">
-//                     <h3>#{} - {}</h3>
-//                     <p class="talent-string">{}</p>
-//                     <a href="{}" target="_blank" rel="noopener">View Log →</a>
-//                 </div>"#,
-//                 i + 1, t.name, t.talent_string, t.log_url
-//             )
-//         })
-//         .collect();
-//
-//     format!("<h2>Top 10 Talents</h2>{}", entries)
-// }
+// / }

@@ -76,11 +76,118 @@ struct GraphQLRequest {
     variables: Option<serde_json::Value>,
 }
 
+async fn fetch_talent_string(
+    client: &Client,
+    token: &str,
+    report_code: &str,
+    fight_id: i64,
+    player_name: &str,
+) -> Result<String> {
+    // Query to get actors and talent code
+    let query = r#"
+    query GetTalents($reportCode: String!, $fightIDs: [Int]!) {
+      reportData {
+        report(code: $reportCode) {
+          masterData(translate: true) {
+            actors(type: "Player") {
+              id
+              name
+            }
+          }
+          fights(fightIDs: $fightIDs) {
+            id
+          }
+        }
+      }
+    }
+    "#;
+    
+    let request = GraphQLRequest {
+        query: query.to_string(),
+        variables: Some(serde_json::json!({
+            "reportCode": report_code,
+            "fightIDs": [fight_id],
+        })),
+    };
+    
+    let response = client
+        .post(GRAPHQL_ENDPOINT)
+        .bearer_auth(token)
+        .json(&request)
+        .send()
+        .await?;
+    
+    let json: serde_json::Value = response.json().await?;
+    
+    // Find the actor ID by name
+    let actors = json
+        .pointer("/data/reportData/report/masterData/actors")
+        .and_then(|v| v.as_array())
+        .context("No actors found")?;
+    
+    let actor_id = actors
+        .iter()
+        .find(|a| {
+            a.get("name")
+                .and_then(|n| n.as_str())
+                .map(|n| n == player_name)
+                .unwrap_or(false)
+        })
+        .and_then(|a| a.get("id"))
+        .and_then(|id| id.as_i64())
+        .context(format!("Actor {} not found in masterData", player_name))?;
+    
+    tracing::debug!("Found actor {} with ID {}", player_name, actor_id);
+    
+    // Now query for the talent import code using the actor ID
+    let talent_query = r#"
+    query GetTalentCode($reportCode: String!, $fightIDs: [Int]!, $actorID: Int!) {
+      reportData {
+        report(code: $reportCode) {
+          fights(fightIDs: $fightIDs) {
+            talentImportCode(actorID: $actorID)
+          }
+        }
+      }
+    }
+    "#;
+    
+    let talent_request = GraphQLRequest {
+        query: talent_query.to_string(),
+        variables: Some(serde_json::json!({
+            "reportCode": report_code,
+            "fightIDs": [fight_id],
+            "actorID": actor_id,
+        })),
+    };
+    
+    let talent_response = client
+        .post(GRAPHQL_ENDPOINT)
+        .bearer_auth(token)
+        .json(&talent_request)
+        .send()
+        .await?;
+    
+    let talent_json: serde_json::Value = talent_response.json().await?;
+    
+    let talent_code = talent_json
+        .pointer("/data/reportData/report/fights/0/talentImportCode")
+        .and_then(|v| v.as_str())
+        .context("No talent code found")?;
+    
+    Ok(talent_code.to_string())
+}
+
 pub async fn fetch_top_talents(class: &str, spec: &str, encounter_id: i32) -> Result<Vec<TalentData>> {
     let token = get_access_token().await?;
     let client = Client::new();
     
-    // Query for top 10 rankings with report codes
+    // Convert class name: "Death_Knight" -> "DeathKnight"
+    let class_name = class.replace('_', "");
+    
+    tracing::info!("Querying: class={}, spec={}, encounter={}", class_name, spec, encounter_id);
+    
+    // Query for top rankings
     let query = r#"
     query Rankings($encounterId: Int!, $className: String!, $specName: String!) {
       worldData {
@@ -102,12 +209,10 @@ pub async fn fetch_top_talents(class: &str, spec: &str, encounter_id: i32) -> Re
         query: query.to_string(),
         variables: Some(serde_json::json!({
             "encounterId": encounter_id,
-            "className": class,
+            "className": class_name,
             "specName": spec,
         })),
     };
-    
-    tracing::debug!("GraphQL request: {:?}", serde_json::to_string_pretty(&request)?);
     
     let response = client
         .post(GRAPHQL_ENDPOINT)
@@ -119,8 +224,6 @@ pub async fn fetch_top_talents(class: &str, spec: &str, encounter_id: i32) -> Re
     
     let status = response.status();
     let response_text = response.text().await?;
-    
-    tracing::debug!("GraphQL response ({}): {}", status, response_text);
     
     if !status.is_success() {
         anyhow::bail!("GraphQL request failed with status {}: {}", status, response_text);
@@ -140,13 +243,13 @@ pub async fn fetch_top_talents(class: &str, spec: &str, encounter_id: i32) -> Re
         .and_then(|v| v.as_array())
         .context("No rankings found in response")?;
     
-    tracing::info!("Found {} rankings", rankings.len());
+    tracing::info!("Found {} rankings, fetching talent strings...", rankings.len());
     
     let mut results = Vec::new();
     
     for (i, rank) in rankings.iter().take(10).enumerate() {
         let name = rank
-            .pointer("/character/name")
+            .get("name")
             .and_then(|v| v.as_str())
             .unwrap_or("Unknown");
         
@@ -165,8 +268,21 @@ pub async fn fetch_top_talents(class: &str, spec: &str, encounter_id: i32) -> Re
             report_code, fight_id
         );
         
-        // TODO: Fetch actual talent string from combatantInfo
-        let talent_string = format!("[Placeholder talent data for rank {}]", i + 1);
+        // Fetch talent string
+        let talent_string = if !report_code.is_empty() && fight_id > 0 {
+            match fetch_talent_string(&client, &token, report_code, fight_id, name).await {
+                Ok(s) if !s.is_empty() => s,
+                Err(e) => {
+                    tracing::warn!("Failed to fetch talents for {}: {:#}", name, e);
+                    "[Talent data unavailable]".to_string()
+                }
+                _ => "[Talent data unavailable]".to_string(),
+            }
+        } else {
+            "[Missing report data]".to_string()
+        };
+        
+        tracing::info!("✓ Rank {}: {} - {} chars", i + 1, name, talent_string.len());
         
         results.push(TalentData {
             name: name.to_string(),
@@ -178,49 +294,10 @@ pub async fn fetch_top_talents(class: &str, spec: &str, encounter_id: i32) -> Re
     Ok(results)
 }
 
-// Test function to verify API connectivity
-pub async fn test_connection() -> Result<()> {
-    tracing::info!("Testing WarcraftLogs API connection...");
-    
-    let token = get_access_token().await?;
-    let client = Client::new();
-    
-    // Simple test query
-    let query = r#"
-    {
-      worldData {
-        expansion(id: 10) {
-          name
-          zones {
-            id
-            name
-          }
-        }
-      }
-    }
-    "#;
-    
-    let request = GraphQLRequest {
-        query: query.to_string(),
-        variables: None,
-    };
-    
-    let response = client
-        .post(GRAPHQL_ENDPOINT)
-        .bearer_auth(&token)
-        .json(&request)
-        .send()
-        .await?;
-    
-    let json: serde_json::Value = response.json().await?;
-    tracing::info!("API test response: {}", serde_json::to_string_pretty(&json)?);
-    
-    Ok(())
-}
 
 
 
-// use anyhow::Result;
+// use anyhow::{Result, Context};
 // use serde::{Deserialize, Serialize};
 // use reqwest::Client;
 // use std::sync::Arc;
@@ -242,13 +319,11 @@ pub async fn test_connection() -> Result<()> {
 //     expires_in: u64,
 // }
 //
-// // Token cache (you'll want to refresh before expiry)
 // lazy_static::lazy_static! {
 //     static ref TOKEN_CACHE: Arc<RwLock<Option<String>>> = Arc::new(RwLock::new(None));
 // }
 //
 // async fn get_access_token() -> Result<String> {
-//     // Check cache first
 //     {
 //         let cache = TOKEN_CACHE.read().await;
 //         if let Some(token) = cache.as_ref() {
@@ -256,24 +331,35 @@ pub async fn test_connection() -> Result<()> {
 //         }
 //     }
 //
-//     let client_id = std::env::var("WCL_CLIENT_ID")?;
-//     let client_secret = std::env::var("WCL_CLIENT_SECRET")?;
+//     let client_id = std::env::var("WCL_CLIENT_ID")
+//         .context("WCL_CLIENT_ID not set in .env")?;
+//     let client_secret = std::env::var("WCL_CLIENT_SECRET")
+//         .context("WCL_CLIENT_SECRET not set in .env")?;
+//
+//     tracing::info!("Fetching new OAuth token...");
 //
 //     let client = Client::new();
-//     let params = [
-//         ("grant_type", "client_credentials"),
-//     ];
+//     let params = [("grant_type", "client_credentials")];
 //
 //     let response = client
 //         .post(OAUTH_TOKEN_URL)
 //         .basic_auth(client_id, Some(client_secret))
 //         .form(&params)
 //         .send()
-//         .await?;
+//         .await
+//         .context("Failed to request OAuth token")?;
 //
-//     let token_resp: TokenResponse = response.json().await?;
+//     let status = response.status();
+//     if !status.is_success() {
+//         let error_text = response.text().await.unwrap_or_default();
+//         anyhow::bail!("OAuth failed with status {}: {}", status, error_text);
+//     }
 //
-//     // Cache the token
+//     let token_resp: TokenResponse = response.json().await
+//         .context("Failed to parse OAuth token response")?;
+//
+//     tracing::info!("✓ OAuth token acquired");
+//
 //     {
 //         let mut cache = TOKEN_CACHE.write().await;
 //         *cache = Some(token_resp.access_token.clone());
@@ -285,46 +371,37 @@ pub async fn test_connection() -> Result<()> {
 // #[derive(Serialize)]
 // struct GraphQLRequest {
 //     query: String,
-//     variables: serde_json::Value,
+//     #[serde(skip_serializing_if = "Option::is_none")]
+//     variables: Option<serde_json::Value>,
 // }
 //
-// pub async fn fetch_top_talents(class: &str, spec: &str) -> Result<Vec<TalentData>> {
-//     let token = get_access_token().await?;
-//     let client = Client::new();
-//
-//     // GraphQL query for top rankings with talent data
+// async fn fetch_talent_string(
+//     client: &Client,
+//     token: &str,
+//     report_code: &str,
+//     fight_id: i64,
+//     actor_id: i64,
+// ) -> Result<String> {
+//     // Query to get talent string from a specific fight
 //     let query = r#"
-//     query($className: String!, $specName: String!) {
-//         worldData {
-//             encounter(id: 3129) {
-//                 characterRankings(
-//                     className: $className
-//                     specName: $specName
-//                     metric: dps
-//                     page: 1
-//                     pageSize: 10
-//                 ) {
-//                     rankings {
-//                         character {
-//                             name
-//                         }
-//                         report {
-//                             code
-//                         }
-//                         startTime
-//                     }
-//                 }
-//             }
+//     query TalentString($reportCode: String!, $fightID: Int!, $actorID: Int!) {
+//       reportData {
+//         report(code: $reportCode) {
+//           fights(fightIDs: [$fightID]) {
+//             talents(actorID: $actorID)
+//           }
 //         }
+//       }
 //     }
 //     "#;
 //
 //     let request = GraphQLRequest {
 //         query: query.to_string(),
-//         variables: serde_json::json!({
-//             "className": class,
-//             "specName": spec,
-//         }),
+//         variables: Some(serde_json::json!({
+//             "reportCode": report_code,
+//             "fightID": fight_id,
+//             "actorID": actor_id,
+//         })),
 //     };
 //
 //     let response = client
@@ -336,9 +413,134 @@ pub async fn test_connection() -> Result<()> {
 //
 //     let json: serde_json::Value = response.json().await?;
 //
-//     // TODO: Parse response and extract actual talent strings
-//     // (Requires digging into combatantInfo in the report data)
+//     // Extract talent string
+//     let talent_string = json
+//         .pointer("/data/reportData/report/fights/0/talents")
+//         .and_then(|v| v.as_str())
+//         .unwrap_or("N/A")
+//         .to_string();
 //
-//     Ok(vec![])
+//     Ok(talent_string)
 // }
-
+//
+// pub async fn fetch_top_talents(class: &str, spec: &str, encounter_id: i32) -> Result<Vec<TalentData>> {
+//     let token = get_access_token().await?;
+//     let client = Client::new();
+//
+//     // Convert class name: "Death_Knight" -> "DeathKnight"
+//     let class_name = class.replace('_', "");
+//
+//     tracing::info!("Querying: class={}, spec={}, encounter={}", class_name, spec, encounter_id);
+//
+//     // Query for top rankings with actor IDs
+//     let query = r#"
+//     query Rankings($encounterId: Int!, $className: String!, $specName: String!) {
+//       worldData {
+//         encounter(id: $encounterId) {
+//           name
+//           characterRankings(
+//             className: $className
+//             specName: $specName
+//             metric: dps
+//             difficulty: 5
+//             page: 1
+//           )
+//         }
+//       }
+//     }
+//     "#;
+//
+//     let request = GraphQLRequest {
+//         query: query.to_string(),
+//         variables: Some(serde_json::json!({
+//             "encounterId": encounter_id,
+//             "className": class_name,
+//             "specName": spec,
+//         })),
+//     };
+//
+//     let response = client
+//         .post(GRAPHQL_ENDPOINT)
+//         .bearer_auth(&token)
+//         .json(&request)
+//         .send()
+//         .await
+//         .context("Failed to send GraphQL request")?;
+//
+//     let status = response.status();
+//     let response_text = response.text().await?;
+//
+//     if !status.is_success() {
+//         anyhow::bail!("GraphQL request failed with status {}: {}", status, response_text);
+//     }
+//
+//     let json: serde_json::Value = serde_json::from_str(&response_text)
+//         .context("Failed to parse GraphQL response")?;
+//
+//     // Check for GraphQL errors
+//     if let Some(errors) = json.get("errors") {
+//         anyhow::bail!("GraphQL errors: {}", serde_json::to_string_pretty(errors)?);
+//     }
+//
+//     // Parse rankings
+//     let rankings = json
+//         .pointer("/data/worldData/encounter/characterRankings/rankings")
+//         .and_then(|v| v.as_array())
+//         .context("No rankings found in response")?;
+//
+//     tracing::info!("Found {} rankings, fetching talent strings...", rankings.len());
+//
+//     let mut results = Vec::new();
+//
+//     for (i, rank) in rankings.iter().take(10).enumerate() {
+//         let name = rank
+//             .get("name")
+//             .and_then(|v| v.as_str())
+//             .unwrap_or("Unknown");
+//
+//         let report_code = rank
+//             .pointer("/report/code")
+//             .and_then(|v| v.as_str())
+//             .unwrap_or("");
+//
+//         let fight_id = rank
+//             .pointer("/report/fightID")
+//             .and_then(|v| v.as_i64())
+//             .unwrap_or(0);
+//
+//         // Get the actor ID from the rankings - this is needed for talent lookup
+//         let actor_id = rank
+//             .get("gameID")
+//             .or_else(|| rank.get("id"))
+//             .and_then(|v| v.as_i64())
+//             .unwrap_or(0);
+//
+//         let log_url = format!(
+//             "https://www.warcraftlogs.com/reports/{}#fight={}",
+//             report_code, fight_id
+//         );
+//
+//         // Fetch talent string for this specific player
+//         let talent_string = if !report_code.is_empty() && fight_id > 0 && actor_id > 0 {
+//             match fetch_talent_string(&client, &token, report_code, fight_id, actor_id).await {
+//                 Ok(s) if !s.is_empty() && s != "N/A" => s,
+//                 _ => {
+//                     tracing::warn!("Failed to fetch talents for {} (actor: {})", name, actor_id);
+//                     "[Talent data unavailable]".to_string()
+//                 }
+//             }
+//         } else {
+//             "[Missing report data]".to_string()
+//         };
+//
+//         tracing::debug!("Rank {}: {} - {} chars talent string", i + 1, name, talent_string.len());
+//
+//         results.push(TalentData {
+//             name: name.to_string(),
+//             talent_string,
+//             log_url,
+//         });
+//     }
+//
+//     Ok(results)
+// }

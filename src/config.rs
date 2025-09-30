@@ -39,14 +39,26 @@ impl ClassSpecs {
 // Current tier encounters (Season 1 of The War Within)
 pub fn get_encounters() -> Vec<Encounter> {
     vec![
-        Encounter { id: 2902, name: "Ulgrax the Devourer" },
-        Encounter { id: 2917, name: "The Bloodbound Horror" },
-        Encounter { id: 2898, name: "Sikran" },
-        Encounter { id: 2918, name: "Rasha'nan" },
-        Encounter { id: 2919, name: "Broodtwister Ovi'nax" },
-        Encounter { id: 2920, name: "Nexus-Princess Ky'veza" },
-        Encounter { id: 2921, name: "The Silken Court" },
-        Encounter { id: 2922, name: "Queen Ansurek" },
+        Encounter { id: 3129, name: "Plexus Sentinel" },
+        Encounter { id: 3131, name: "Loom'ithar" },
+        Encounter { id: 3130, name: "Soulbinder Naazindhri" },
+        Encounter { id: 3132, name: "Forgeweaver Araz" },
+        Encounter { id: 3122, name: "The Soul Hunters" },
+        Encounter { id: 3133, name: "Fractillus" },
+        Encounter { id: 3134, name: "Nexus-King Salahadaar" },
+        Encounter { id: 3135, name: "Dimensius, the All-Devouring" },
     ]
+
+
+    // vec![
+    //     Encounter { id: 2902, name: "Ulgrax the Devourer" },
+    //     Encounter { id: 2917, name: "The Bloodbound Horror" },
+    //     Encounter { id: 2898, name: "Sikran" },
+    //     Encounter { id: 2918, name: "Rasha'nan" },
+    //     Encounter { id: 2919, name: "Broodtwister Ovi'nax" },
+    //     Encounter { id: 2920, name: "Nexus-Princess Ky'veza" },
+    //     Encounter { id: 2921, name: "The Silken Court" },
+    //     Encounter { id: 2922, name: "Queen Ansurek" },
+    // ]
 }
 

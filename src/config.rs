@@ -10,6 +10,9 @@ pub struct ClassSpecs {
 #[derive(Debug, Deserialize)]
 pub struct ClassData {
     pub specs: Vec<String>,
+    pub color: Vec<String>,
+    #[serde(rename = "pretty-color")]
+    pub pretty_color: Vec<String>,
 }
 
 #[derive(Debug, Clone)]

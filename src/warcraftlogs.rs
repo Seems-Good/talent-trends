@@ -4,6 +4,11 @@ use reqwest::Client;
 use std::sync::Arc;
 use tokio::sync::{mpsc, RwLock};
 
+
+/// Warcraft Logs Endpoints:
+/// <div> class="info" 
+/// see: [Post about Blizzard API Changes](https://www.warcraftlogs.com/);
+/// </div>
 const OAUTH_TOKEN_URL: &str = "https://www.warcraftlogs.com/oauth/token";
 const GRAPHQL_ENDPOINT: &str = "https://www.warcraftlogs.com/api/v2/client";
 

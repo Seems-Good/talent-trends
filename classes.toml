@@ -5,62 +5,62 @@ pretty-color = ["red"]
 
 [Demon_Hunter]
 specs = ["Havoc", "Vengeance"]
-color = "#A330C9"  
-pretty-color = "dark-magenta"
+color = ["#A330C9" ]
+pretty-color = ["dark-magenta"]
 
 [Druid]
 specs = ["Balance", "Feral", "Guardian", "Restoration"]
-color = "#FF7C0A"
-pretty-color = "orange"
+color = ["#FF7C0A"]
+pretty-color = ["orange"]
 
 [Evoker]
 specs = ["Augmentation", "Devastation", "Preservation"]
-color = "#33937F"  
-pretty-color = "dark-emerald"
+color = ["#33937F" ]
+pretty-color = ["dark-emerald"]
 
 [Hunter]
 specs = ["Beast Mastery", "Marksmanship", "Survival"]
-color = "#AAD372"  
-pretty-color = "pistachio"
+color = ["#AAD372" ]
+pretty-color = ["pistachio"]
 
 [Mage]
 specs = ["Arcane", "Fire", "Frost"]
-color = "#3FC7EB"  
-pretty-color = "light-blue"
+color = ["#3FC7EB" ]
+pretty-color = ["light-blue"]
 
 [Monk]
 specs = ["Brewmaster", "Mistweaver", "Windwalker"]
-color = "#00FF98"  
-pretty-color = "spring-green"
+color = ["#00FF98" ]
+pretty-color = ["spring-green"]
 
 [Paladin]
 specs = ["Holy", "Protection", "Retribution"]
-color = "#F48CBA"  
-pretty-color = "pink"
+color = ["#F48CBA" ]
+pretty-color = ["pink"]
 
 [Priest]
 specs = ["Discipline", "Holy", "Shadow"]
-color = "#FFFFFF"
-pretty-color = "white"
+color = ["#FFFFFF"]
+pretty-color = ["white"]
 
 [Rogue]
 specs = ["Assassination", "Outlaw", "Subtlety"]
-color = "#FFF468"
-pretty-color = "yellow"
+color = ["#FFF468"]
+pretty-color = ["yellow"]
 
 [Shaman]
 specs = ["Elemental", "Enhancement", "Restoration"]
-color = "#0070DD"  
-pretty-color = "blue"
+color = ["#0070DD" ]
+pretty-color = ["blue"]
 
 [Warlock]
 specs = ["Affliction", "Demonology", "Destruction"]
-color = "#8788EE"  
-pretty-color = "purple"
+color = ["#8788EE" ]
+pretty-color = ["purple"]
 
 
 [Warrior]
 specs = ["Arms", "Fury", "Protection"]
-color = "#C69B6D"  
-pretty-color = "tan"
+color = ["#C69B6D" ]
+pretty-color = ["tan"]
 

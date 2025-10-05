@@ -28,7 +28,31 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let config = ClassSpecs::load();
-    tracing::info!("Loaded {} classes", config.classes.len());
+
+    // Itterate over classes and verify we loaded correct data from `classes.toml`
+    for (class_name, class_data) in &config.classes {
+        let color_len = class_data.color.len();
+        let pretty_len = class_data.pretty_color.len();
+
+        // Trace each class color lengths for verbose debugging
+        tracing::trace!(
+            class = %class_name,
+            color_len = color_len,
+            pretty_len = pretty_len,
+            "Checking color lengths per class"
+        );
+        // Make sure we have a pretty-color for each color code.
+        assert_eq!(
+            color_len, pretty_len,
+            "Mismatch in lengths for class '{}' (color: {}, pretty_color: {})",
+            class_name, color_len, pretty_len
+        );
+    }
+
+    tracing::info!("Loaded {} classes from `classes.toml` config.", 
+        config.classes.len(), 
+    );
+
 
     let app = Router::new()
         .route("/", get(home))

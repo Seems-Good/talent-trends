@@ -1,0 +1,13 @@
+[Unit]
+Description=Restart Docker Containers using Docker Compose
+After=network.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/$USER/talent-trends
+ExecStart=/usr/bin/docker compose -f /home/$USER/talent-trends/docker-compose.yml restart
+TimeoutSec=60
+Restart=no
+
+[Install]
+WantedBy=multi-user.target

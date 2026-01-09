@@ -1,0 +1,9 @@
+[Unit]
+Description=Daily Docker Compose Restart Timer @ 2am
+
+[Timer]
+OnCalendar=*-*-* 02:00:00
+Unit=/home/$USER/talent-trends/docker-compose-restart.service
+
+[Install]
+WantedBy=timers.target

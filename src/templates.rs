@@ -2,13 +2,32 @@ use crate::config::ClassSpecs;
 use crate::warcraftlogs::TalentDataWithRank;
 
 pub fn render_talent_entry(data: &TalentDataWithRank) -> String {
+    let talent_string = &data.data.talent_string;
+
     format!(
-        r#"<div class="talent-entry">
-            <h3>#{} - {}</h3>
-            <div class="talent-string">{}</div>
-            <a href="{}" target="_blank" rel="noopener">View Log →</a>
+        r#"<div class="talent-entry" id="talent-entry-{rank}">
+            <h3># {rank} - {name}</h3>
+            <div class="talent-string">{talent_string}</div>
+
+            <a href="{log_url}" target="_blank" rel="noopener">View Log →</a>
+
+            <!-- Toggle button -->
+            <div style="margin-top:12px;">
+                <button class="toggle-iframe-btn" data-talent="{talent_string}">
+                    Show Talent Calculator
+                </button>
+            </div>
+
+            <!-- Collapsible iframe container -->
+            <div class="iframe-container" style="display:none; margin-top:12px; overflow:hidden;">
+                <iframe src="https://www.wowhead.com/talent-calc/embed/blizzard/{talent_string}" 
+                    width="100%" height="580" style="border:1px solid #444; border-radius:6px; display:block; min-width:980px;"></iframe>
+            </div>
         </div>"#,
-        data.rank, data.data.name, data.data.talent_string, data.data.log_url
+        rank = data.rank,
+        name = data.data.name,
+        talent_string = talent_string,
+        log_url = data.data.log_url
     )
 }
 
@@ -58,13 +77,45 @@ pub fn home(config: &ClassSpecs) -> String {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Talent Trends</title>
+<script>
+document.addEventListener('click', (e) => {{
+    if (e.target.matches('.toggle-iframe-btn')) {{
+        const btn = e.target;
+        const container = btn.closest('.talent-entry').querySelector('.iframe-container');
+        
+        if (container.style.display === 'none') {{
+            // Slide down animation
+            container.style.display = 'block';
+            container.style.height = '0px';
+            const iframe = container.querySelector('iframe');
+            const targetHeight = iframe.offsetHeight + 'px';
+            container.style.transition = 'height 0.3s ease';
+            requestAnimationFrame(() => {{ container.style.height = targetHeight; }});
+            
+            btn.textContent = 'Hide Talent Calculator';
+        }} else {{
+            // Slide up animation
+            const currentHeight = container.offsetHeight + 'px';
+            container.style.height = currentHeight;
+            requestAnimationFrame(() => {{
+                container.style.transition = 'height 0.3s ease';
+                container.style.height = '0px';
+            }});
+            setTimeout(() => {{ container.style.display = 'none'; }}, 300);
+            
+            btn.textContent = 'Show Talent Calculator';
+        }}
+    }}
+}});
+</script>
+
     <style>
         * {{
             box-sizing: border-box;
         }}
         body {{ 
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            max-width: 900px; 
+            max-width: 1000px; 
             margin: 40px auto; 
             padding: 0 20px;
             background: #1a1a1a;
@@ -163,6 +214,20 @@ pub fn home(config: &ClassSpecs) -> String {
         }}
         .talent-entry a:hover {{
             text-decoration: underline;
+        }}
+        .iframe-container {{
+            overflow: hidden;
+            position: relative;
+        }}
+        .iframe-container iframe {{
+            display: block;
+            margin: 0 auto;
+        }}
+        @media (max-width: 900px) {{
+            .iframe-container iframe {{
+                transform: scale(0.7) !important;
+                transform-origin: top center !important;
+            }}
         }}
         #results {{
             min-height: 100px;

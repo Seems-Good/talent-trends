@@ -19,7 +19,7 @@ color = ["#33937F" ]
 pretty-color = ["dark-emerald"]
 
 [Hunter]
-specs = ["Beast Mastery", "Marksmanship", "Survival"]
+specs = ["BeastMastery", "Marksmanship", "Survival"]
 color = ["#AAD372" ]
 pretty-color = ["pistachio"]
 

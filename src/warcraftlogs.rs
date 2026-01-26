@@ -11,6 +11,10 @@ use tokio::sync::{mpsc, RwLock};
 /// </div>
 const OAUTH_TOKEN_URL: &str = "https://www.warcraftlogs.com/oauth/token";
 const GRAPHQL_ENDPOINT: &str = "https://www.warcraftlogs.com/api/v2/client";
+const PATCH_FLAG: &str = "partition: 3";    // with massive talent changes, showing parses BEFORE
+                                            // prepatch 12.0.0 breaks the wowhead talent viewer.
+                                            // appending this value to query ensures we only return
+                                            // prepatch data. NEED TO CHANGE BEFORE MIDNIGHT
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TalentData {
@@ -223,10 +227,10 @@ async fn fetch_and_stream_talents(
     tracing::info!("Querying: class={}, spec={}, encounter={}, region={}", 
         class_name, spec, encounter_id, region_display);
     
-    let query = r#"
-    query Rankings($encounterId: Int!, $className: String!, $specName: String!, $serverRegion: String) {
-      worldData {
-        encounter(id: $encounterId) {
+    let query = format!(r#"
+    query Rankings($encounterId: Int!, $className: String!, $specName: String!, $serverRegion: String) {{
+      worldData {{
+        encounter(id: $encounterId) {{
           name
           characterRankings(
             className: $className
@@ -235,11 +239,12 @@ async fn fetch_and_stream_talents(
             metric: dps
             difficulty: 5
             page: 1
+            {}
           )
-        }
-      }
-    }
-    "#;
+        }}
+      }}
+    }}
+    "#, PATCH_FLAG);
     
     let mut variables = serde_json::json!({
         "encounterId": encounter_id,

@@ -4,7 +4,7 @@ color = ["#C41E3A"]
 pretty-color = ["red"]
 
 [Demon_Hunter]
-specs = ["Havoc", "Vengeance"]
+specs = ["Havoc", "Vengeance", "Devourer"]
 color = ["#A330C9" ]
 pretty-color = ["dark-magenta"]
 
@@ -58,9 +58,7 @@ specs = ["Affliction", "Demonology", "Destruction"]
 color = ["#8788EE" ]
 pretty-color = ["purple"]
 
-
 [Warrior]
 specs = ["Arms", "Fury", "Protection"]
 color = ["#C69B6D" ]
 pretty-color = ["tan"]
-

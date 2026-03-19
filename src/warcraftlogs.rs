@@ -1,18 +1,31 @@
 use anyhow::{Context, Result};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{mpsc, RwLock};
 
-/// Warcraft Logs Endpoints:
 const OAUTH_TOKEN_URL: &str = "https://www.warcraftlogs.com/oauth/token";
 const GRAPHQL_ENDPOINT: &str = "https://www.warcraftlogs.com/api/v2/client";
+
+/// A single cast, with timestamps relative to fight start.
+/// `icon` is the bare filename (e.g. "ability_evoker_dragonrage.jpg");
+/// the JS timeline prepends the CDN base URL.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct CastEvent {
+    pub t: i64,       // ms from fight start
+    pub id: u64,      // abilityGameID / guid
+    pub name: String,
+    pub icon: String,
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TalentData {
     pub name: String,
     pub talent_string: String,
     pub log_url: String,
+    pub fight_duration_ms: i64,
+    pub cast_events: Vec<CastEvent>,
 }
 
 #[derive(Debug, Clone)]
@@ -83,49 +96,57 @@ struct GraphQLRequest {
     variables: Option<serde_json::Value>,
 }
 
-/// Two-step talent lookup:
-/// 1. Resolve the player's actor ID from masterData
-/// 2. Fetch talentImportCode from the fight using that actor ID
-async fn fetch_talent_string(
+struct TalentResult {
+    talent_string: String,
+    fight_duration_ms: i64,
+    cast_events: Vec<CastEvent>,
+}
+
+/// Fetches talent string + cast timeline for one player in one fight.
+///
+/// Strategy (confirmed from live API response):
+///
+/// 1. `masterData.actors` → resolve player name to actor ID
+///
+/// 2. Single combined query fetches three things at once:
+///    a. `fights(fightIDs)` → startTime / endTime / talentImportCode
+///    b. `table(dataType: Casts, sourceID)` → JSON scalar whose `data.entries[]`
+///       each have `{ guid, name, abilityIcon, total }`.
+///       `guid` == `abilityGameID` in the flat events array.
+///    c. `events(dataType: Casts, sourceID)` → flat array
+///       `{ abilityGameID, timestamp, type, ... }` with no name/icon fields.
+///
+/// 3. Build a guid→(name,icon) lookup map from the table entries.
+///
+/// 4. Walk the flat events, filter to `type == "cast"`, skip pseudo-IDs < 100,
+///    look up each abilityGameID in the map to attach name+icon, compute
+///    `t = timestamp - fight_start`.
+async fn fetch_talent_and_events(
     client: &Client,
     token: &str,
     report_code: &str,
     fight_id: i64,
     player_name: &str,
-) -> Result<String> {
-    // Step 1: resolve actor ID
-    let actor_query = r#"
-    query GetActors($reportCode: String!) {
-      reportData {
-        report(code: $reportCode) {
-          masterData(translate: true) {
-            actors(type: "Player") {
-              id
-              name
-            }
-          }
-        }
-      }
-    }
-    "#;
-
-    let actor_request = GraphQLRequest {
-        query: actor_query.to_string(),
-        variables: Some(serde_json::json!({
-            "reportCode": report_code,
-        })),
-    };
-
+) -> Result<TalentResult> {
+    // ── Step 1: resolve actor ID from masterData ──────────────────────────────
     let actor_json: serde_json::Value = client
         .post(GRAPHQL_ENDPOINT)
         .bearer_auth(token)
-        .json(&actor_request)
-        .send()
-        .await
-        .context("Failed to send actor lookup request")?
-        .json()
-        .await
-        .context("Failed to parse actor lookup response")?;
+        .json(&GraphQLRequest {
+            query: r#"
+            query GetActors($reportCode: String!) {
+              reportData {
+                report(code: $reportCode) {
+                  masterData(translate: true) {
+                    actors(type: "Player") { id name }
+                  }
+                }
+              }
+            }"#.to_string(),
+            variables: Some(serde_json::json!({ "reportCode": report_code })),
+        })
+        .send().await.context("actor lookup send")?
+        .json().await.context("actor lookup parse")?;
 
     let actors = actor_json
         .pointer("/data/reportData/report/masterData/actors")
@@ -135,10 +156,8 @@ async fn fetch_talent_string(
     let actor_id = actors
         .iter()
         .find(|a| {
-            a.get("name")
-                .and_then(|n| n.as_str())
-                .map(|n| n == player_name)
-                .unwrap_or(false)
+            a.get("name").and_then(|n| n.as_str())
+                .map(|n| n == player_name).unwrap_or(false)
         })
         .and_then(|a| a.get("id"))
         .and_then(|id| id.as_i64())
@@ -146,43 +165,170 @@ async fn fetch_talent_string(
 
     tracing::debug!("Resolved actor '{}' -> ID {}", player_name, actor_id);
 
-    // Step 2: fetch talentImportCode for that actor in that fight
-    let talent_query = r#"
-    query GetTalentCode($reportCode: String!, $fightIDs: [Int]!, $actorID: Int!) {
-      reportData {
-        report(code: $reportCode) {
-          fights(fightIDs: $fightIDs) {
-            talentImportCode(actorID: $actorID)
-          }
-        }
-      }
-    }
-    "#;
-
-    let talent_json: serde_json::Value = client
+    // ── Step 2: combined query — talent + table + events ─────────────────────
+    //
+    // `table` is a JSON scalar returning:
+    //   { data: { entries: [ { guid, name, abilityIcon, total, ... } ] } }
+    //
+    // `events` is a JSON scalar returning flat objects:
+    //   { abilityGameID, timestamp, type, sourceID, targetID, fight }
+    //   (no name/icon fields, regardless of translate)
+    let combined: serde_json::Value = client
         .post(GRAPHQL_ENDPOINT)
         .bearer_auth(token)
         .json(&GraphQLRequest {
-            query: talent_query.to_string(),
+            query: r#"
+            query GetAll($code: String!, $ids: [Int]!, $src: Int!) {
+              reportData {
+                report(code: $code) {
+                  fights(fightIDs: $ids) {
+                    startTime
+                    endTime
+                    talentImportCode(actorID: $src)
+                  }
+                  table(
+                    fightIDs: $ids
+                    sourceID: $src
+                    dataType: Casts
+                    translate: true
+                  )
+                  events(
+                    fightIDs: $ids
+                    sourceID: $src
+                    dataType: Casts
+                    limit: 10000
+                  ) {
+                    data
+                    nextPageTimestamp
+                  }
+                }
+              }
+            }"#.to_string(),
             variables: Some(serde_json::json!({
-                "reportCode": report_code,
-                "fightIDs": [fight_id as i32],
-                "actorID": actor_id as i32,
+                "code": report_code,
+                "ids":  [fight_id as i32],
+                "src":  actor_id as i32,
             })),
         })
-        .send()
-        .await
-        .context("Failed to send talent code request")?
-        .json()
-        .await
-        .context("Failed to parse talent code response")?;
+        .send().await.context("combined query send")?
+        .json().await.context("combined query parse")?;
 
-    let talent_code = talent_json
-        .pointer("/data/reportData/report/fights/0/talentImportCode")
+    let report = combined
+        .pointer("/data/reportData/report")
+        .context("No report in combined response")?;
+
+    // ── Fight timing + talent string ──────────────────────────────────────────
+    let fight = report
+        .pointer("/fights/0")
+        .context("No fight[0] in combined response")?;
+
+    let fight_start       = fight.get("startTime").and_then(|v| v.as_i64()).unwrap_or(0);
+    let fight_end         = fight.get("endTime").and_then(|v| v.as_i64()).unwrap_or(0);
+    let fight_duration_ms = fight_end - fight_start;
+
+    let talent_code = fight
+        .get("talentImportCode")
         .and_then(|v| v.as_str())
-        .context("No talentImportCode in fight response")?;
+        .context("No talentImportCode in fight")?;
 
-    Ok(talent_code.to_string())
+    // ── Build guid → (name, icon) map from table entries ─────────────────────
+    //
+    // `table` is a JSON scalar — may arrive as a pre-parsed object or as a
+    // JSON string; handle both just like characterRankings.
+    let table_raw = report.get("table").cloned().unwrap_or(serde_json::Value::Null);
+    let table_value: serde_json::Value = if table_raw.is_string() {
+        serde_json::from_str(table_raw.as_str().unwrap_or("{}")).unwrap_or(serde_json::Value::Null)
+    } else {
+        table_raw
+    };
+
+    // entries live at table.data.entries[]
+    let entries = table_value
+        .pointer("/data/entries")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+
+    // Flatten composite entries (those with subentries) by also indexing subentries.
+    // guid (u64) → (name, icon)
+    let mut ability_map: HashMap<u64, (String, String)> = HashMap::new();
+
+    for entry in &entries {
+        if let (Some(guid), Some(name), Some(icon)) = (
+            entry.get("guid").and_then(|v| v.as_u64()),
+            entry.get("name").and_then(|v| v.as_str()),
+            entry.get("abilityIcon").and_then(|v| v.as_str()),
+        ) {
+            ability_map.entry(guid).or_insert_with(|| (name.to_string(), icon.to_string()));
+        }
+
+        // Also index any sub-entries (composite abilities like ranked spells)
+        if let Some(subs) = entry.get("subentries").and_then(|v| v.as_array()) {
+            for sub in subs {
+                if let (Some(guid), Some(name), Some(icon)) = (
+                    sub.get("guid").and_then(|v| v.as_u64()),
+                    sub.get("name").and_then(|v| v.as_str()),
+                    sub.get("abilityIcon").and_then(|v| v.as_str()),
+                ) {
+                    ability_map.entry(guid).or_insert_with(|| (name.to_string(), icon.to_string()));
+                }
+            }
+        }
+    }
+
+    tracing::debug!(
+        "Built ability map with {} entries for {}",
+        ability_map.len(), player_name
+    );
+
+    // ── Parse flat events, join with ability map ──────────────────────────────
+    let events_raw = report
+        .pointer("/events/data")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+
+    let events_array: Vec<serde_json::Value> = match events_raw {
+        serde_json::Value::Array(arr) => arr,
+        serde_json::Value::String(s)  => serde_json::from_str(&s).unwrap_or_default(),
+        _                             => vec![],
+    };
+
+    let cast_events: Vec<CastEvent> = events_array
+        .iter()
+        .filter(|ev| {
+            // Keep only completed casts — skip "begincast" (spell wind-up)
+            ev.get("type").and_then(|v| v.as_str()) == Some("cast")
+        })
+        .filter_map(|ev| {
+            let timestamp = ev.get("timestamp")?.as_i64()?;
+            let id        = ev.get("abilityGameID")?.as_u64()?;
+
+            // Skip engine pseudo-events (auto-attack etc.)
+            if id < 100 { return None; }
+
+            // Look up name + icon from the table map
+            let (name, icon) = ability_map.get(&id)?.clone();
+
+            Some(CastEvent {
+                t: timestamp - fight_start,
+                id,
+                name,
+                icon,
+            })
+        })
+        .collect();
+
+    tracing::info!(
+        "Parsed {} cast events for {} ({} raw events, {} abilities in map, {}ms fight)",
+        cast_events.len(), player_name,
+        events_array.len(), ability_map.len(), fight_duration_ms
+    );
+
+    Ok(TalentResult {
+        talent_string: talent_code.to_string(),
+        fight_duration_ms,
+        cast_events,
+    })
 }
 
 pub async fn fetch_top_talents_stream(
@@ -195,22 +341,14 @@ pub async fn fetch_top_talents_stream(
 ) -> Result<mpsc::Receiver<Result<TalentDataWithRank>>> {
     let (tx, rx) = mpsc::channel(10);
 
-    let class = class.to_string();
-    let spec = spec.to_string();
+    let class  = class.to_string();
+    let spec   = spec.to_string();
     let region = region.map(|s| s.to_string());
 
     tokio::spawn(async move {
         if let Err(e) = fetch_and_stream_talents(
-            &tx,
-            &class,
-            &spec,
-            encounter_id,
-            region.as_deref(),
-            difficulty,
-            partition,
-        )
-        .await
-        {
+            &tx, &class, &spec, encounter_id, region.as_deref(), difficulty, partition,
+        ).await {
             tracing::error!("fetch_and_stream_talents failed: {:#}", e);
             let _ = tx.send(Err(e)).await;
         }
@@ -228,11 +366,10 @@ async fn fetch_and_stream_talents(
     difficulty: i32,
     partition: Option<i32>,
 ) -> Result<()> {
-    let token = get_access_token().await?;
+    let token  = get_access_token().await?;
     let client = Client::new();
 
-    // WCL expects "DeathKnight" not "Death_Knight" — strip underscores
-    let class_name = class.replace('_', "");
+    let class_name     = class.replace('_', "");
     let region_display = region.unwrap_or("all");
 
     tracing::info!(
@@ -240,10 +377,9 @@ async fn fetch_and_stream_talents(
         class_name, spec, encounter_id, region_display, difficulty, partition
     );
 
-    // Only inject the partition argument when one is configured for this season
     let partition_arg = match partition {
         Some(p) => format!("partition: {}", p),
-        None => String::new(),
+        None    => String::new(),
     };
 
     let query = format!(
@@ -276,11 +412,10 @@ async fn fetch_and_stream_talents(
 
     let mut variables = serde_json::json!({
         "encounterId": encounter_id,
-        "className": class_name,
-        "specName": spec,
-        "difficulty": difficulty,
+        "className":   class_name,
+        "specName":    spec,
+        "difficulty":  difficulty,
     });
-
     if let Some(r) = region {
         variables["serverRegion"] = serde_json::Value::String(r.to_string());
     }
@@ -288,42 +423,29 @@ async fn fetch_and_stream_talents(
     let response = client
         .post(GRAPHQL_ENDPOINT)
         .bearer_auth(&token)
-        .json(&GraphQLRequest {
-            query,
-            variables: Some(variables),
-        })
-        .send()
-        .await
-        .context("Failed to send rankings GraphQL request")?;
+        .json(&GraphQLRequest { query, variables: Some(variables) })
+        .send().await.context("rankings send")?;
 
-    let status = response.status();
+    let status        = response.status();
     let response_text = response.text().await?;
-
     if !status.is_success() {
-        anyhow::bail!(
-            "GraphQL request failed with status {}: {}",
-            status,
-            response_text
-        );
+        anyhow::bail!("GraphQL request failed {}: {}", status, response_text);
     }
 
     let json: serde_json::Value =
-        serde_json::from_str(&response_text).context("Failed to parse rankings JSON")?;
+        serde_json::from_str(&response_text).context("rankings parse")?;
 
     if let Some(errors) = json.get("errors") {
         anyhow::bail!("GraphQL errors: {}", serde_json::to_string_pretty(errors)?);
     }
 
-    // characterRankings is returned as a JSON scalar — may be a string or an object
     let rankings_json = json
         .pointer("/data/worldData/encounter/characterRankings")
-        .context("No characterRankings field in response")?;
+        .context("No characterRankings field")?;
 
     let rankings_value: serde_json::Value = if rankings_json.is_string() {
-        let s = rankings_json
-            .as_str()
-            .context("characterRankings was string but unreadable")?;
-        serde_json::from_str(s).context("Failed to parse characterRankings JSON string")?
+        serde_json::from_str(rankings_json.as_str().context("characterRankings unreadable")?)
+            .context("characterRankings parse")?
     } else {
         rankings_json.clone()
     };
@@ -331,87 +453,61 @@ async fn fetch_and_stream_talents(
     let rankings = match rankings_value.get("rankings").and_then(|v| v.as_array()) {
         Some(r) => r,
         None => {
-            let debug_str = serde_json::to_string(&rankings_value).unwrap_or_default();
-            anyhow::bail!("No rankings array in WCL response: {}", debug_str);
+            anyhow::bail!(
+                "No rankings array: {}",
+                serde_json::to_string(&rankings_value).unwrap_or_default()
+            );
         }
     };
 
     if rankings.is_empty() {
-        tracing::info!("WCL returned empty rankings for this query.");
+        tracing::info!("Empty rankings returned.");
         return Ok(());
     }
 
-    tracing::info!("Found {} rankings, fetching talent strings...", rankings.len());
+    tracing::info!("Found {} rankings, fetching talent + cast data...", rankings.len());
 
     let mut rank_number = 1usize;
 
     for rank in rankings.iter() {
-        if rank_number > 10 {
-            break;
-        }
+        if rank_number > 10 { break; }
 
-        let name = rank
-            .get("name")
-            .and_then(|v| v.as_str())
-            .unwrap_or("Unknown");
+        let name        = rank.get("name").and_then(|v| v.as_str()).unwrap_or("Unknown");
+        if name == "Anonymous" { continue; }
 
-        if name == "Anonymous" {
-            tracing::debug!("Skipping Anonymous log");
-            continue;
-        }
-
-        let report_code = rank
-            .pointer("/report/code")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
-
-        let fight_id = rank
-            .pointer("/report/fightID")
-            .and_then(|v| v.as_i64())
-            .unwrap_or(0);
+        let report_code = rank.pointer("/report/code").and_then(|v| v.as_str()).unwrap_or("");
+        let fight_id    = rank.pointer("/report/fightID").and_then(|v| v.as_i64()).unwrap_or(0);
 
         let log_url = format!(
             "https://www.warcraftlogs.com/reports/{}#fight={}",
             report_code, fight_id
         );
 
-        let talent_string = if !report_code.is_empty() && fight_id > 0 {
-            match fetch_talent_string(&client, &token, report_code, fight_id, name).await {
-                Ok(s) if !s.is_empty() => s,
-                Ok(_) => {
-                    tracing::warn!("Empty talent string for rank {} {}", rank_number, name);
-                    "[Talent data unavailable]".to_string()
+        let (talent_string, fight_duration_ms, cast_events) =
+            if !report_code.is_empty() && fight_id > 0 {
+                match fetch_talent_and_events(&client, &token, report_code, fight_id, name).await {
+                    Ok(r) => (r.talent_string, r.fight_duration_ms, r.cast_events),
+                    Err(e) => {
+                        tracing::warn!("Rank {} {} failed: {:#}", rank_number, name, e);
+                        ("[Talent data unavailable]".to_string(), 0, vec![])
+                    }
                 }
-                Err(e) => {
-                    tracing::warn!(
-                        "Failed to fetch talents for rank {} {}: {:#}",
-                        rank_number, name, e
-                    );
-                    "[Talent data unavailable]".to_string()
-                }
-            }
-        } else {
-            tracing::warn!("Rank {} {} missing report/fight data", rank_number, name);
-            "[Missing report data]".to_string()
-        };
+            } else {
+                ("[Missing report data]".to_string(), 0, vec![])
+            };
 
-        tracing::info!(
-            "Rank {} {}: {}",
-            rank_number,
-            name,
-            &talent_string[..talent_string.len().min(40)]
-        );
+        tracing::info!("Rank {} {} — {} cast events", rank_number, name, cast_events.len());
 
-        let talent_data = TalentDataWithRank {
+        if tx.send(Ok(TalentDataWithRank {
             rank: rank_number,
             data: TalentData {
                 name: name.to_string(),
                 talent_string,
                 log_url,
+                fight_duration_ms,
+                cast_events,
             },
-        };
-
-        if tx.send(Ok(talent_data)).await.is_err() {
+        })).await.is_err() {
             break;
         }
 

@@ -13,11 +13,12 @@ use std::{convert::Infallible, net::SocketAddr, time::Duration};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod config;
-mod warcraftlogs;
-mod templates;
 mod style;
+mod templates;
+mod warcraftlogs;
 
 use config::{ClassSpecs, Settings};
+use warcraftlogs::TalentDataWithRank;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -33,7 +34,6 @@ async fn main() -> anyhow::Result<()> {
 
     let config = ClassSpecs::load();
 
-    // Iterate over classes and verify we loaded correct data from `classes.toml`
     for (class_name, class_data) in &config.classes {
         let color_len = class_data.color.len();
         let pretty_len = class_data.pretty_color.len();
@@ -75,7 +75,7 @@ struct TalentQuery {
     spec: String,
     encounter: i32,
     region: String,
-    mode: String, // "Normal" | "Heroic" | "Mythic"
+    mode: String,
 }
 
 async fn home() -> Html<String> {
@@ -130,6 +130,7 @@ async fn get_talents_sse(
         ).await {
             Ok(mut receiver) => {
                 while let Some(result) = receiver.recv().await {
+                    let result: Result<TalentDataWithRank, _> = result;
                     match result {
                         Ok(talent_data) => {
                             let html = templates::render_talent_entry(&talent_data);

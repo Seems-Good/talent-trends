@@ -28,6 +28,12 @@ pub struct Mode {
     pub difficulty: i32,
 }
 
+#[derive(Debug, Clone)]
+pub struct Metric {
+    pub name: &'static str,  // display label
+    pub code: &'static str,  // WCL API value
+}
+
 // Season / bosses configuration
 
 #[derive(Debug, Deserialize)]
@@ -47,8 +53,8 @@ pub struct Season {
     pub name: String,
     pub encounters: Vec<SeasonEncounter>,
     pub modes: Option<SeasonModes>,
-    /// Optional WCL partition number. Set this when a mid-season patch splits
-    /// the rankings (e.g. a prepatch). Omit for new seasons with no partition yet.
+    /// Optional WCL partition number. Set when a mid-season patch splits
+    /// rankings (e.g. a prepatch). Omit for new seasons with no partition yet.
     pub partition: Option<i32>,
 }
 
@@ -71,10 +77,7 @@ impl ClassSpecs {
     }
 
     pub fn class_names(&self) -> Vec<String> {
-        self.classes
-            .keys()
-            .map(|k| k.replace('_', " "))
-            .collect()
+        self.classes.keys().map(|k| k.replace('_', " ")).collect()
     }
 
     pub fn get_specs(&self, class_name: &str) -> Option<Vec<String>> {
@@ -89,7 +92,7 @@ impl ClassSpecs {
             Region { code: "EU",  name: "Europe" },
             Region { code: "KR",  name: "Korea" },
             Region { code: "TW",  name: "Taiwan" },
-            Region { code: "CN",  name: "China"  },
+            Region { code: "CN",  name: "China" },
         ]
     }
 
@@ -98,6 +101,14 @@ impl ClassSpecs {
             Mode { name: "Normal", difficulty: 3 },
             Mode { name: "Heroic", difficulty: 4 },
             Mode { name: "Mythic", difficulty: 5 },
+        ]
+    }
+
+    pub fn get_metrics() -> Vec<Metric> {
+        vec![
+            Metric { name: "Damage",       code: "dps" },
+            Metric { name: "Healing",      code: "hps" },
+            Metric { name: "Tank Healing", code: "tankhps" },
         ]
     }
 }
@@ -110,10 +121,7 @@ impl Settings {
 
     pub fn current_encounters(&self) -> Vec<SeasonEncounter> {
         let id = &self.current_season.id;
-        self.seasons
-            .get(id)
-            .map(|s| s.encounters.clone())
-            .unwrap_or_default()
+        self.seasons.get(id).map(|s| s.encounters.clone()).unwrap_or_default()
     }
 
     pub fn default_difficulty(&self) -> i32 {
@@ -134,7 +142,6 @@ impl Settings {
             .unwrap_or_else(|| vec![3, 4, 5])
     }
 
-    /// Returns the WCL partition for the current season, if one is configured.
     pub fn current_partition(&self) -> Option<i32> {
         let id = &self.current_season.id;
         self.seasons.get(id).and_then(|s| s.partition)

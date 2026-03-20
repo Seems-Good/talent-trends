@@ -12,11 +12,11 @@ pub fn css() -> &'static str {
         }
         h1 {
             color: #fff;
-            border-bottom: 3px solid #c69b6d;
+            border-bottom: 3px solid #01C8AA;
             padding-bottom: 12px;
         }
         h2 {
-            color: #c69b6d;
+            color: #01C8AA;
             margin-top: 32px;
             margin-bottom: 16px;
         }
@@ -38,23 +38,53 @@ pub fn css() -> &'static str {
             min-width: 200px;
         }
         select:focus, button:focus {
-            outline: 2px solid #c69b6d;
+            outline: 2px solid #01C8AA;
             outline-offset: 2px;
         }
         button {
-            background: #c69b6d;
-            color: #1a1a1a;
+            background: #01C8AA;
+            color: #0f1a18;
             font-weight: 600;
             cursor: pointer;
             border: none;
             min-width: auto;
         }
-        button:hover { background: #d4a574; }
+        button:hover { background: #02dfc0; }
         button:disabled {
             background: #555;
             color: #888;
             cursor: not-allowed;
         }
+
+        /* Metric toggle buttons */
+        .metric-group {
+            display: inline-flex;
+            border: 1px solid #444;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 8px 8px 8px 0;
+            vertical-align: middle;
+        }
+        .metric-btn {
+            padding: 10px 20px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+            border-radius: 0;
+            min-width: auto;
+            margin: 0;
+            background: #333;
+            color: #888;
+            transition: background 0.15s, color 0.15s;
+        }
+        .metric-btn:hover { background: #3a3a3a; color: #ccc; }
+        .metric-btn.active {
+            background: #01C8AA;
+            color: #0f1a18;
+        }
+        .metric-btn:focus { outline: 2px solid #01C8AA; outline-offset: -2px; }
+
         .talent-entry {
             border: 1px solid #444;
             padding: 16px;
@@ -72,7 +102,7 @@ pub fn css() -> &'static str {
         .talent-entry h3 {
             margin-top: 0;
             margin-bottom: 8px;
-            color: #c69b6d;
+            color: #01C8AA;
             font-size: 18px;
         }
         .talent-string {
@@ -104,10 +134,7 @@ pub fn css() -> &'static str {
             font-weight: 500;
         }
         .btn-secondary:hover { background: #444; color: #e0e0e0; }
-        .iframe-container {
-            overflow: hidden;
-            position: relative;
-        }
+        .iframe-container { overflow: hidden; position: relative; }
         .iframe-container iframe { display: block; margin: 0 auto; }
         @media (max-width: 900px) {
             .iframe-container iframe {
@@ -129,7 +156,7 @@ pub fn css() -> &'static str {
             width: 48px;
             height: 48px;
             border: 5px solid #444;
-            border-top-color: #c69b6d;
+            border-top-color: #01C8AA;
             border-radius: 50%;
             animation: spin 1s linear infinite;
         }
@@ -160,24 +187,25 @@ pub fn css() -> &'static str {
             cursor: pointer;
             user-select: none;
         }
-        .ct-toolbar input[type=range] { width: 120px; accent-color: #c69b6d; }
-        .ct-toolbar span { font-size: 12px; color: #666; }
+        .ct-toolbar input[type=range] { width: 140px; accent-color: #01C8AA; }
+        .ct-toolbar .ct-slider-val {
+            font-size: 12px;
+            color: #ccc;
+            min-width: 28px;
+        }
+        .ct-toolbar .ct-meta {
+            margin-left: auto;
+            font-size: 12px;
+            color: #ccc;
+        }
         .ct-scroll {
             overflow-x: auto;
             background: #181818;
             padding: 10px 12px 12px;
         }
         .ct-inner { min-width: 600px; }
-        .ct-axis-row {
-            display: flex;
-            align-items: flex-end;
-            margin-bottom: 4px;
-        }
-        .ct-label-col {
-            width: 210px;
-            min-width: 210px;
-            flex-shrink: 0;
-        }
+        .ct-axis-row { display: flex; align-items: flex-end; margin-bottom: 4px; }
+        .ct-label-col { width: 210px; min-width: 210px; flex-shrink: 0; }
         .ct-axis {
             flex: 1;
             position: relative;
@@ -193,12 +221,7 @@ pub fn css() -> &'static str {
             bottom: 2px;
             white-space: nowrap;
         }
-        .ct-row {
-            display: flex;
-            align-items: center;
-            height: 26px;
-            margin: 1px 0;
-        }
+        .ct-row { display: flex; align-items: center; height: 26px; margin: 1px 0; }
         .ct-row:hover .ct-bar { background: #222; }
         .ct-label {
             width: 210px;
@@ -210,27 +233,9 @@ pub fn css() -> &'static str {
             padding-right: 10px;
             overflow: hidden;
         }
-        .ct-icon {
-            width: 18px;
-            height: 18px;
-            border-radius: 3px;
-            flex-shrink: 0;
-            image-rendering: pixelated;
-        }
-        .ct-name {
-            font-size: 11px;
-            color: #a0a0a0;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            flex: 1;
-        }
-        .ct-count {
-            font-size: 10px;
-            color: #555;
-            flex-shrink: 0;
-            font-family: 'Courier New', monospace;
-        }
+        .ct-icon { width: 18px; height: 18px; border-radius: 3px; flex-shrink: 0; image-rendering: pixelated; }
+        .ct-name { font-size: 11px; color: #a0a0a0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
+        .ct-count { font-size: 10px; color: #555; flex-shrink: 0; font-family: 'Courier New', monospace; }
         .ct-bar {
             flex: 1;
             position: relative;
@@ -243,45 +248,29 @@ pub fn css() -> &'static str {
             position: absolute;
             width: 3px;
             height: 14px;
-            background: #c69b6d;
+            background: #01C8AA;
             border-radius: 1px;
             top: 2px;
             transform: translateX(-50%);
             opacity: 0.85;
             cursor: default;
         }
-        .ct-mark:hover {
-            background: #e8b87a;
-            opacity: 1;
-            z-index: 2;
-            width: 4px;
-        }
-        .ct-empty {
-            padding: 16px;
-            color: #555;
-            font-size: 12px;
-            text-align: center;
-        }"#
+        .ct-mark:hover { background: #02dfc0; opacity: 1; z-index: 2; width: 4px; }
+        .ct-empty { padding: 16px; color: #555; font-size: 12px; text-align: center; }"#
 }
 
 pub fn toggle_script() -> &'static str {
-    // The toggle handler now also lazily initialises the timeline on first open.
-    // Data lives in data-events / data-duration attributes on the container div,
-    // so no inline <script> is needed in the SSE-streamed HTML fragments
-    // (injected <script> tags don't execute via insertAdjacentHTML).
     r#"document.addEventListener('click', (e) => {
 
-    // ── Talent calculator iframe toggle ───────────────────────────────────────
     if (e.target.matches('.toggle-iframe-btn')) {
         const btn       = e.target;
         const entry     = btn.closest('.talent-entry');
         const container = entry.querySelector('.iframe-container');
-
         if (container.style.display === 'none' || container.style.display === '') {
-            container.style.display  = 'block';
-            container.style.height   = '0px';
-            const iframe             = container.querySelector('iframe');
-            const targetHeight       = iframe.offsetHeight + 'px';
+            container.style.display    = 'block';
+            container.style.height     = '0px';
+            const iframe               = container.querySelector('iframe');
+            const targetHeight         = iframe.offsetHeight + 'px';
             container.style.transition = 'height 0.3s ease';
             requestAnimationFrame(() => { container.style.height = targetHeight; });
             btn.textContent = 'Hide Talent Calculator';
@@ -297,20 +286,15 @@ pub fn toggle_script() -> &'static str {
         }
     }
 
-    // ── Cast timeline toggle ──────────────────────────────────────────────────
     if (e.target.matches('.toggle-timeline-btn')) {
         const btn       = e.target;
         const rank      = btn.dataset.rank;
         const container = document.getElementById('cast-timeline-' + rank);
         if (!container) return;
-
         const showing = container.style.display === 'block';
-
         if (!showing) {
             container.style.display = 'block';
             btn.textContent = 'Hide Timeline';
-
-            // Lazy init: render on first open only (guard with a flag attribute)
             if (!container.dataset.rendered) {
                 container.dataset.rendered = '1';
                 try {
@@ -332,7 +316,14 @@ pub fn toggle_script() -> &'static str {
 }
 
 pub fn timeline_script() -> &'static str {
-    r#"function renderTimeline(id, events, durationMs) {
+    // Slider runs 1–100. Value 100 means "All" (no cast-count filter applied).
+    // sliderLabel must be top-level so oninput handlers can reach it.
+    r#"
+function sliderLabel(v) {
+    return +v >= 100 ? 'All' : String(v);
+}
+
+function renderTimeline(id, events, durationMs) {
     const el = document.getElementById(id);
     if (!el) return;
 
@@ -341,14 +332,12 @@ pub fn timeline_script() -> &'static str {
         return;
     }
 
-    // Group by ability ID
     const byId = {};
     for (const ev of events) {
         if (!byId[ev.id]) byId[ev.id] = { name: ev.name, icon: ev.icon, times: [] };
         byId[ev.id].times.push(ev.t);
     }
 
-    // Sort rows by first cast time ascending
     const allRows = Object.values(byId).sort((a, b) => a.times[0] - b.times[0]);
 
     function esc(s) {
@@ -362,7 +351,9 @@ pub fn timeline_script() -> &'static str {
     }
 
     function build(maxCasts) {
-        const rows = allRows.filter(a => a.times.length <= maxCasts);
+        const showAll = +maxCasts >= 100;
+        const rows    = showAll ? allRows : allRows.filter(a => a.times.length <= +maxCasts);
+
         if (!rows.length) {
             return '<div class="ct-empty">No abilities match this filter.</div>';
         }
@@ -373,62 +364,58 @@ pub fn timeline_script() -> &'static str {
         let ticks = '';
         for (let s = 0; s <= Math.ceil(durSec); s += interval) {
             const pct = (s / durSec * 100).toFixed(2);
-            ticks += `<span class="ct-tick" style="left:${pct}%">${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}</span>`;
+            ticks += '<span class="ct-tick" style="left:' + pct + '%">'
+                   + Math.floor(s/60) + ':' + String(s%60).padStart(2,'0')
+                   + '</span>';
         }
 
         let rowsHtml = '';
         for (const a of rows) {
             const iconUrl = 'https://assets.rpglogs.com/img/warcraft/abilities/' + a.icon;
-            const marks   = a.times.map(t => {
+            let marks = '';
+            for (const t of a.times) {
                 const pct = (t / durationMs * 100).toFixed(2);
-                return `<div class="ct-mark" style="left:${pct}%" title="${esc(a.name)} @ ${fmt(t)}"></div>`;
-            }).join('');
-
-            rowsHtml += `
-            <div class="ct-row">
-                <div class="ct-label">
-                    <img class="ct-icon" src="${iconUrl}" alt=""
-                         onerror="this.style.display='none'">
-                    <span class="ct-name">${esc(a.name)}</span>
-                    <span class="ct-count">x${a.times.length}</span>
-                </div>
-                <div class="ct-bar">${marks}</div>
-            </div>`;
+                marks += '<div class="ct-mark" style="left:' + pct + '%" title="'
+                       + esc(a.name) + ' @ ' + fmt(t) + '"></div>';
+            }
+            rowsHtml += '<div class="ct-row">'
+                + '<div class="ct-label">'
+                + '<img class="ct-icon" src="' + iconUrl + '" alt="" onerror="this.style.display=\'none\'">'
+                + '<span class="ct-name">' + esc(a.name) + '</span>'
+                + '<span class="ct-count">x' + a.times.length + '</span>'
+                + '</div>'
+                + '<div class="ct-bar">' + marks + '</div>'
+                + '</div>';
         }
 
-        return `<div class="ct-inner">
-            <div class="ct-axis-row">
-                <div class="ct-label-col"></div>
-                <div class="ct-axis">${ticks}</div>
-            </div>
-            ${rowsHtml}
-        </div>`;
+        return '<div class="ct-inner">'
+             + '<div class="ct-axis-row">'
+             + '<div class="ct-label-col"></div>'
+             + '<div class="ct-axis">' + ticks + '</div>'
+             + '</div>'
+             + rowsHtml
+             + '</div>';
     }
 
-    const defaultMax = 20;
-    const uid        = id; // stable closure key
+    const defaultMax = Math.min(10, Math.max(...allRows.map(r => r.times.length)));
+    const uid        = id;
 
     window._ctBuilders = window._ctBuilders || {};
     window._ctBuilders[uid] = build;
 
-    el.innerHTML = `
-        <div class="ct-toolbar">
-            <label>
-                Max casts per ability
-                <input type="range" min="1" max="50" value="${defaultMax}"
-                    oninput="
-                        document.getElementById('ct-val-${uid}').textContent = this.value;
-                        document.getElementById('ct-body-${uid}').innerHTML =
-                            window._ctBuilders['${uid}'](+this.value);
-                    ">
-            </label>
-            <span id="ct-val-${uid}">${defaultMax}</span>
-            <span style="margin-left:auto;color:#444">${fmt(durationMs)} fight</span>
-        </div>
-        <div class="ct-scroll">
-            <div id="ct-body-${uid}"></div>
-        </div>`;
+    el.innerHTML = '<div class="ct-toolbar">'
+        + '<label>Max casts per ability&nbsp;'
+        + '<input type="range" min="1" max="100" value="' + defaultMax + '"'
+        + ' oninput="'
+        +   'document.getElementById(\'ct-val-' + uid + '\').textContent=sliderLabel(this.value);'
+        +   'document.getElementById(\'ct-body-' + uid + '\').innerHTML=window._ctBuilders[\'' + uid + '\'](this.value);">'
+        + '</label>'
+        + '<span id="ct-val-' + uid + '" class="ct-slider-val">' + sliderLabel(defaultMax) + '</span>'
+        + '<span class="ct-meta">' + fmt(durationMs) + ' fight &bull; ' + allRows.length + ' abilities</span>'
+        + '</div>'
+        + '<div class="ct-scroll"><div id="ct-body-' + uid + '"></div></div>';
 
     document.getElementById('ct-body-' + uid).innerHTML = build(defaultMax);
-}"#
+}
+"#
 }

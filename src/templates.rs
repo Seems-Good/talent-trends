@@ -5,13 +5,8 @@ use crate::warcraftlogs::TalentDataWithRank;
 pub fn render_talent_entry(data: &TalentDataWithRank) -> String {
     let talent_string = &data.data.talent_string;
 
-    // Embed cast events as a data attribute — no inline <script> needed.
-    // insertAdjacentHTML does not execute injected <script> tags in modern
-    // browsers, so we store the JSON on the element and render lazily on
-    // first click from the top-level toggle handler.
     let cast_json = serde_json::to_string(&data.data.cast_events)
         .unwrap_or_else(|_| "[]".to_string())
-        // Escape for safe embedding inside an HTML attribute value
         .replace('&', "&amp;")
         .replace('"', "&quot;")
         .replace('<', "&lt;")
@@ -127,6 +122,7 @@ pub fn home(config: &ClassSpecs) -> String {
 
     <div class="form-container">
         <form id="talent-form">
+            <!-- Row 1: region, mode, encounter, class, spec -->
             <select name="region" id="region" required>
                 {region_options}
             </select>
@@ -145,6 +141,13 @@ pub fn home(config: &ClassSpecs) -> String {
             <select name="spec" id="spec" required>
                 <option value="">Select Spec</option>
             </select>
+            <!-- Row 2: metric buttons + submit -->
+            <br>
+            <input type="hidden" name="metric" id="metric-input" value="dps">
+            <div class="metric-group" role="group" aria-label="Metric">
+                <button type="button" class="metric-btn active" data-metric="dps">Damage</button>
+                <button type="button" class="metric-btn"        data-metric="hps">Healing</button>
+            </div>
             <button type="submit" id="submit-btn" disabled>Get Talents</button>
         </form>
     </div>
@@ -163,6 +166,15 @@ pub fn home(config: &ClassSpecs) -> String {
         const specSelect      = document.getElementById('spec');
         const submitBtn       = document.getElementById('submit-btn');
         const resultsDiv      = document.getElementById('results');
+        const metricInput     = document.getElementById('metric-input');
+
+        document.querySelectorAll('.metric-btn').forEach(btn => {{
+            btn.addEventListener('click', () => {{
+                document.querySelectorAll('.metric-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                metricInput.value = btn.dataset.metric;
+            }});
+        }});
 
         regionSelect.addEventListener('change', updateSubmitButton);
         modeSelect.addEventListener('change', updateSubmitButton);
@@ -205,7 +217,7 @@ pub fn home(config: &ClassSpecs) -> String {
             resultsDiv.innerHTML = '<h2>Top 10 Talents</h2><div id="talents-container"></div><div id="loading-spinner" class="spinner"></div>';
             submitBtn.disabled = true;
 
-            const eventSource = new EventSource(`/api/talents?${{params}}`);
+            const eventSource = new EventSource('/api/talents?' + params);
             let firstData = true;
 
             eventSource.onmessage = (event) => {{
@@ -214,8 +226,8 @@ pub fn home(config: &ClassSpecs) -> String {
                     if (spinner) spinner.remove();
                     firstData = false;
                 }}
-                const container = document.getElementById('talents-container');
-                container.insertAdjacentHTML('beforeend', event.data);
+                document.getElementById('talents-container')
+                    .insertAdjacentHTML('beforeend', event.data);
             }};
 
             eventSource.addEventListener('complete', () => {{
@@ -223,8 +235,7 @@ pub fn home(config: &ClassSpecs) -> String {
                 updateSubmitButton();
             }});
 
-            eventSource.onerror = (err) => {{
-                console.error('EventSource error:', err);
+            eventSource.onerror = () => {{
                 eventSource.close();
                 if (firstData) {{
                     resultsDiv.innerHTML = '<div class="error">Connection error. Please try again.</div>';

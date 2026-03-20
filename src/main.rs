@@ -35,26 +35,16 @@ async fn main() -> anyhow::Result<()> {
     let config = ClassSpecs::load();
 
     for (class_name, class_data) in &config.classes {
-        let color_len = class_data.color.len();
+        let color_len  = class_data.color.len();
         let pretty_len = class_data.pretty_color.len();
-
-        tracing::trace!(
-            class = %class_name,
-            color_len = color_len,
-            pretty_len = pretty_len,
-            "Checking color lengths per class"
-        );
         assert_eq!(
             color_len, pretty_len,
-            "Mismatch in lengths for class '{}' (color: {}, pretty_color: {})",
+            "Mismatch for class '{}' (color: {}, pretty_color: {})",
             class_name, color_len, pretty_len
         );
     }
 
-    tracing::info!(
-        "Loaded {} classes from `classes.toml` config.",
-        config.classes.len(),
-    );
+    tracing::info!("Loaded {} classes.", config.classes.len());
 
     let app = Router::new()
         .route("/", get(home))
@@ -71,11 +61,12 @@ async fn main() -> anyhow::Result<()> {
 
 #[derive(Deserialize)]
 struct TalentQuery {
-    class: String,
-    spec: String,
+    class:    String,
+    spec:     String,
     encounter: i32,
-    region: String,
-    mode: String,
+    region:   String,
+    mode:     String,
+    metric:   Option<String>,
 }
 
 async fn home() -> Html<String> {
@@ -92,7 +83,8 @@ async fn get_talents_sse(
         params.region.clone()
     };
 
-    let settings = Settings::load();
+    let settings  = Settings::load();
+    let partition = settings.current_partition();
 
     let difficulty = ClassSpecs::get_modes()
         .into_iter()
@@ -100,24 +92,18 @@ async fn get_talents_sse(
         .map(|m| m.difficulty)
         .unwrap_or_else(|| settings.default_difficulty());
 
-    let partition = settings.current_partition();
+    let metric = params.metric
+        .as_deref()
+        .unwrap_or("dps")
+        .to_string();
 
     tracing::info!(
-        "Fetching talents for {} {} on encounter {} (region: {}, mode: {}, difficulty: {}, partition: {:?})",
-        params.class,
-        params.spec,
-        params.encounter,
-        region_display,
-        params.mode,
-        difficulty,
-        partition,
+        "Fetching talents for {} {} encounter {} (region: {}, mode: {}, difficulty: {}, partition: {:?}, metric: {})",
+        params.class, params.spec, params.encounter,
+        region_display, params.mode, difficulty, partition, metric
     );
 
-    let region = if params.region == "all" {
-        None
-    } else {
-        Some(params.region.clone())
-    };
+    let region = if params.region == "all" { None } else { Some(params.region.clone()) };
 
     let stream = async_stream::stream! {
         match warcraftlogs::fetch_top_talents_stream(
@@ -127,6 +113,7 @@ async fn get_talents_sse(
             region.as_deref(),
             difficulty,
             partition,
+            &metric,
         ).await {
             Ok(mut receiver) => {
                 while let Some(result) = receiver.recv().await {
@@ -137,7 +124,7 @@ async fn get_talents_sse(
                             yield Ok(Event::default().data(html));
                         }
                         Err(e) => {
-                            tracing::error!("Worker error while streaming talents: {:#}", e);
+                            tracing::error!("Worker error: {:#}", e);
                             let error_html = format!(r#"<div class="error">Error: {}</div>"#, e);
                             yield Ok(Event::default().data(error_html));
                             break;
@@ -147,7 +134,7 @@ async fn get_talents_sse(
                 yield Ok(Event::default().event("complete").data("done"));
             }
             Err(e) => {
-                tracing::error!("Failed to start fetch_top_talents_stream: {:#}", e);
+                tracing::error!("Failed to start stream: {:#}", e);
                 let error_html = format!(r#"<div class="error">Error: {}</div>"#, e);
                 yield Ok(Event::default().data(error_html));
                 yield Ok(Event::default().event("complete").data("done"));

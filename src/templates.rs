@@ -122,7 +122,6 @@ pub fn home(config: &ClassSpecs) -> String {
 
     <div class="form-container">
         <form id="talent-form">
-            <!-- Row 1: region, mode, encounter, class, spec -->
             <select name="region" id="region" required>
                 {region_options}
             </select>
@@ -141,7 +140,6 @@ pub fn home(config: &ClassSpecs) -> String {
             <select name="spec" id="spec" required>
                 <option value="">Select Spec</option>
             </select>
-            <!-- Row 2: metric buttons + submit -->
             <br>
             <input type="hidden" name="metric" id="metric-input" value="dps">
             <div class="metric-group" role="group" aria-label="Metric">
@@ -155,6 +153,19 @@ pub fn home(config: &ClassSpecs) -> String {
     <div id="results"></div>
 
     <script>
+        const THEMES = {{
+            dps: {{ accent: '#e84040', hover: '#ff5555', text: '#fff' }},
+            hps: {{ accent: '#01C8AA', hover: '#02dfc0', text: '#0f1a18' }},
+        }};
+
+        function setTheme(metric) {{
+            const t    = THEMES[metric] || THEMES.dps;
+            const root = document.documentElement;
+            root.style.setProperty('--accent',       t.accent);
+            root.style.setProperty('--accent-hover', t.hover);
+            root.style.setProperty('--accent-text',  t.text);
+        }}
+
         const specsData = {{
             {specs_map}
         }};
@@ -168,11 +179,52 @@ pub fn home(config: &ClassSpecs) -> String {
         const resultsDiv      = document.getElementById('results');
         const metricInput     = document.getElementById('metric-input');
 
+        // Populate spec options for a given class, optionally restoring a saved value.
+        function populateSpecs(className, restoreValue) {{
+            const prevValue = restoreValue !== undefined ? restoreValue : specSelect.value;
+            specSelect.innerHTML = '<option value="">Select Spec</option>';
+            if (className && specsData[className]) {{
+                specsData[className].forEach(spec => {{
+                    const option = document.createElement('option');
+                    option.value = spec;
+                    option.textContent = spec;
+                    specSelect.appendChild(option);
+                }});
+                specSelect.disabled = false;
+                // Restore previously selected spec if it exists in the new list
+                if (prevValue && specsData[className].includes(prevValue)) {{
+                    specSelect.value = prevValue;
+                }}
+            }} else {{
+                specSelect.disabled = true;
+            }}
+        }}
+
+        // On page load: restore spec list for whatever class the browser remembered,
+        // restore metric button state and theme from the hidden input the browser remembered.
+        document.addEventListener('DOMContentLoaded', () => {{
+            // Restore spec dropdown
+            if (classSelect.value) {{
+                populateSpecs(classSelect.value, specSelect.value);
+            }}
+
+            // Restore metric button active state + theme
+            const savedMetric = metricInput.value || 'dps';
+            document.querySelectorAll('.metric-btn').forEach(btn => {{
+                btn.classList.toggle('active', btn.dataset.metric === savedMetric);
+            }});
+            setTheme(savedMetric);
+
+            updateSubmitButton();
+        }});
+
+        // Metric toggle buttons
         document.querySelectorAll('.metric-btn').forEach(btn => {{
             btn.addEventListener('click', () => {{
                 document.querySelectorAll('.metric-btn').forEach(b => b.classList.remove('active'));
                 btn.classList.add('active');
                 metricInput.value = btn.dataset.metric;
+                setTheme(btn.dataset.metric);
             }});
         }});
 
@@ -181,32 +233,20 @@ pub fn home(config: &ClassSpecs) -> String {
         encounterSelect.addEventListener('change', updateSubmitButton);
 
         classSelect.addEventListener('change', (e) => {{
-            const selectedClass = e.target.value;
-            specSelect.innerHTML = '<option value="">Select Spec</option>';
-            if (selectedClass && specsData[selectedClass]) {{
-                specsData[selectedClass].forEach(spec => {{
-                    const option = document.createElement('option');
-                    option.value = spec;
-                    option.textContent = spec;
-                    specSelect.appendChild(option);
-                }});
-                specSelect.disabled = false;
-            }} else {{
-                specSelect.disabled = true;
-            }}
+            populateSpecs(e.target.value);
             updateSubmitButton();
         }});
 
         specSelect.addEventListener('change', updateSubmitButton);
 
         function updateSubmitButton() {{
-            const allSelected =
+            submitBtn.disabled = !(
                 regionSelect.value &&
                 modeSelect.value &&
                 encounterSelect.value &&
                 classSelect.value &&
-                specSelect.value;
-            submitBtn.disabled = !allSelected;
+                specSelect.value
+            );
         }}
 
         document.getElementById('talent-form').addEventListener('submit', async (e) => {{

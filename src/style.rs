@@ -2,6 +2,14 @@ pub fn css() -> &'static str {
     r#"* {
             box-sizing: border-box;
         }
+
+        /* Theme accent — swapped by JS when metric changes */
+        :root {
+            --accent: #e84040;
+            --accent-hover: #ff5555;
+            --accent-text: #fff;
+        }
+
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             max-width: 1200px;
@@ -12,13 +20,15 @@ pub fn css() -> &'static str {
         }
         h1 {
             color: #fff;
-            border-bottom: 3px solid #01C8AA;
+            border-bottom: 3px solid var(--accent);
             padding-bottom: 12px;
+            transition: border-color 0.3s;
         }
         h2 {
-            color: #01C8AA;
+            color: var(--accent);
             margin-top: 32px;
             margin-bottom: 16px;
+            transition: color 0.3s;
         }
         .form-container {
             background: #2a2a2a;
@@ -38,18 +48,19 @@ pub fn css() -> &'static str {
             min-width: 200px;
         }
         select:focus, button:focus {
-            outline: 2px solid #01C8AA;
+            outline: 2px solid var(--accent);
             outline-offset: 2px;
         }
         button {
-            background: #01C8AA;
-            color: #0f1a18;
+            background: var(--accent);
+            color: var(--accent-text);
             font-weight: 600;
             cursor: pointer;
             border: none;
             min-width: auto;
+            transition: background 0.2s;
         }
-        button:hover { background: #02dfc0; }
+        button:hover { background: var(--accent-hover); }
         button:disabled {
             background: #555;
             color: #888;
@@ -80,10 +91,11 @@ pub fn css() -> &'static str {
         }
         .metric-btn:hover { background: #3a3a3a; color: #ccc; }
         .metric-btn.active {
-            background: #01C8AA;
-            color: #0f1a18;
+            background: var(--accent);
+            color: var(--accent-text);
+            transition: background 0.2s;
         }
-        .metric-btn:focus { outline: 2px solid #01C8AA; outline-offset: -2px; }
+        .metric-btn:focus { outline: 2px solid var(--accent); outline-offset: -2px; }
 
         .talent-entry {
             border: 1px solid #444;
@@ -102,8 +114,9 @@ pub fn css() -> &'static str {
         .talent-entry h3 {
             margin-top: 0;
             margin-bottom: 8px;
-            color: #01C8AA;
+            color: var(--accent);
             font-size: 18px;
+            transition: color 0.3s;
         }
         .talent-string {
             font-family: 'Courier New', monospace;
@@ -156,9 +169,10 @@ pub fn css() -> &'static str {
             width: 48px;
             height: 48px;
             border: 5px solid #444;
-            border-top-color: #01C8AA;
+            border-top-color: var(--accent);
             border-radius: 50%;
             animation: spin 1s linear infinite;
+            transition: border-top-color 0.3s;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -187,7 +201,7 @@ pub fn css() -> &'static str {
             cursor: pointer;
             user-select: none;
         }
-        .ct-toolbar input[type=range] { width: 140px; accent-color: #01C8AA; }
+        .ct-toolbar input[type=range] { width: 140px; accent-color: var(--accent); }
         .ct-toolbar .ct-slider-val {
             font-size: 12px;
             color: #ccc;
@@ -248,14 +262,15 @@ pub fn css() -> &'static str {
             position: absolute;
             width: 3px;
             height: 14px;
-            background: #01C8AA;
+            background: var(--accent);
             border-radius: 1px;
             top: 2px;
             transform: translateX(-50%);
             opacity: 0.85;
             cursor: default;
+            transition: background 0.3s;
         }
-        .ct-mark:hover { background: #02dfc0; opacity: 1; z-index: 2; width: 4px; }
+        .ct-mark:hover { background: var(--accent-hover); opacity: 1; z-index: 2; width: 4px; }
         .ct-empty { padding: 16px; color: #555; font-size: 12px; text-align: center; }"#
 }
 
@@ -316,8 +331,6 @@ pub fn toggle_script() -> &'static str {
 }
 
 pub fn timeline_script() -> &'static str {
-    // Slider runs 1–100. Value 100 means "All" (no cast-count filter applied).
-    // sliderLabel must be top-level so oninput handlers can reach it.
     r#"
 function sliderLabel(v) {
     return +v >= 100 ? 'All' : String(v);
